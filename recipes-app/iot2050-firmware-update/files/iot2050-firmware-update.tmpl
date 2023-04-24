@@ -123,10 +123,9 @@ class UpgradeError(Exception):
 
 
 class FirmwareUpdate(object):
-    def __init__(self, firmware):
-        self.firmware = firmware
-        self.user_home = os.getenv('HOME')
-        self.back_fw_path = os.path.join(self.user_home, ".rollback_fw")
+    def __init__(self, *args):
+        self.firmware = args[0]
+        self.back_fw_path = os.path.join("".join(args[1]), ".rollback_fw")
         self.rollback_fw_tar = os.path.join(self.back_fw_path, 'rollback_backup_fw.tar')
         self.backup_fw_name = 'rollback_fw.bin'
 
@@ -440,8 +439,8 @@ class ManagedFirmwareUpdate(FirmwareUpdate):
     _update_conf_json = 'update.conf.json'
     uboot_default_env_file_name = 'u-boot-initial-env'
 
-    def __init__(self, firmware):
-        super().__init__(firmware)
+    def __init__(self, *args):
+        super().__init__(*args)
 
         # Build the board information
         self._board_info = BoardInformation()
@@ -647,6 +646,10 @@ def main(argv):
     parser.add_argument('-n', '--no-backup',
                         help='Do not generate a firmware backup',
                         action='store_true')
+    parser.add_argument('-d', '--bkup-dir',
+                        help='Specify the firmware backup directory.',
+                        nargs=1,
+                        default=os.getenv('HOME'))
     try:
         args = parser.parse_args()
     except IOError as e:
@@ -665,11 +668,11 @@ def main(argv):
     try:
         if args.force:
             # When forced, ignore all the checking and call the underlying updater directly
-            updater = FirmwareUpdate(args.firmware)
+            updater = FirmwareUpdate(args.firmware, args.bkup_dir)
         elif args.rollback:
-            updater = RollbackFirmware(args.firmware)
+            updater = RollbackFirmware(args.firmware, args.bkup_dir)
         else:
-            updater = ManagedFirmwareUpdate(args.firmware)
+            updater = ManagedFirmwareUpdate(args.firmware, args.bkup_dir)
 
         if args.rollback:
             rollback_confirm = input("\nRollback the firmware to the version before the upgrade (y/N)?")
