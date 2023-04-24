@@ -648,6 +648,9 @@ def main(argv):
                         help='Update firmware quietly, automatic yes to prompts; assume \
                         "yes" as answer to all prompts and run non-interactively. ',
                         action='store_true')
+    parser.add_argument('-rst', '--reboot',
+                        help='Reboot when upgrade is complete.',
+                        action='store_true')
     try:
         args = parser.parse_args()
     except IOError as e:
@@ -701,11 +704,9 @@ def main(argv):
             else:
                     updater.update_uboot_env(envlist)
 
-        reboot_input = input(
-            "\nWarning: Completed. Please reboot the device. Reboot now(y/N)? ")
-        if not reboot_input == "y":
-            sys.exit(1)
-        os.system('reboot')
+        if args.reboot:
+            os.system('reboot')
+        sys.exit(1)
     except UpgradeError as e:
         print(e)
         intput_reminder = '''
