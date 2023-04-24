@@ -650,18 +650,23 @@ def main(argv):
                         help='Specify the firmware backup directory.',
                         nargs=1,
                         default=os.getenv('HOME'))
+    parser.add_argument('-q', '--quiet',
+                        help='Update firmware quietly, automatic yes to prompts; assume \
+                        "yes" as answer to all prompts and run non-interactively. ',
+                        action='store_true')
     try:
         args = parser.parse_args()
     except IOError as e:
         print(e.strerror, file=sys.stderr)
         exit(1)
 
-    update_input = input(
-        "\nWarning: Update may render device unbootable. Continue (y/N)? ")
-    if not update_input == "y":
-        sys.exit(1)
+    if not args.quiet:
+        update_input = input(
+            "\nWarning: Update may render device unbootable. Continue (y/N)? ")
+        if not update_input == "y":
+            sys.exit(1)
 
-    if args.force or args.reset:
+    if not args.quiet and (args.force or args.reset):
         erase_env_input = input("\nWarning: All U-Boot environment variables will be reset to factory settings. Continue (y/N)? ")
         if not erase_env_input == "y":
             sys.exit(1)
@@ -675,9 +680,10 @@ def main(argv):
             updater = ManagedFirmwareUpdate(args.firmware, args.bkup_dir)
 
         if args.rollback:
-            rollback_confirm = input("\nRollback the firmware to the version before the upgrade (y/N)?")
-            if not rollback_confirm == "y":
-                sys.exit(1)
+            if not args.quiet:
+                rollback_confirm = input("\nRollback the firmware to the version before the upgrade (y/N)?")
+                if not rollback_confirm == "y":
+                    sys.exit(1)
             updater.rollback_firmware()
             sys.exit(1)
 
@@ -693,10 +699,13 @@ def main(argv):
             print("\n")
             for env in envlist:
                 print(env)
-            preserved_env_input = input(
-                "\nWarning: Preserve the above env variables. Confirm(Y/n)? ")
-            if not preserved_env_input == "n":
-                updater.update_uboot_env(envlist)
+            if not args.quiet:
+                preserved_env_input = input(
+                    "\nWarning: Preserve the above env variables. Confirm(Y/n)? ")
+                if not preserved_env_input == "n":
+                    updater.update_uboot_env(envlist)
+            else:
+                    updater.update_uboot_env(envlist)
     except UpgradeError as e:
         print(e)
         intput_reminder = '''
