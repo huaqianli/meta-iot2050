@@ -111,6 +111,7 @@ import subprocess
 import tempfile
 import hashlib
 import io
+from enum import Enum
 
 
 class UpgradeError(Exception):
@@ -121,6 +122,22 @@ class UpgradeError(Exception):
     def __str__(self):
         return self.erroinfo
 
+#
+# ErrorCode:
+# | Error code | Description                              |
+# |-------------|------------------------------------------|
+# | 0           | Success                                  |
+# | 1           | Failed to parse the arguments            |
+# | 2           | User canceled                            |
+# | 3           | Failed to backup firmware                |
+# | 4           | Failed to rollback the original firmware |
+#
+class ErrorCode(Enum):
+    SUCCESS = 0
+    ARGERR  = 1
+    CANCEL  = 2
+    BKUPERR  = 3
+    ROLLBACKERR = 4
 
 class FirmwareUpdate(object):
     def __init__(self, *args):
@@ -327,14 +344,13 @@ class FirmwareUpdate(object):
 
         if flash_md5_digest[0] != flash_md5_digest[1]:
             print("Firmware backup failed")
-            sys.exit(1)
+            return ErrorCode.BKUPERR.value
 
         info = tarfile.TarInfo(name=self.backup_fw_name)
         info.size = len(mtd_in_memory)
         with tarfile.TarFile(self.rollback_fw_tar, 'w') as tar:
             tar.addfile(info, io.BytesIO(mtd_in_memory))
         print('Firmware backup ended\n')
-
 
 class BoardInformation(object):
     def __init__(self):
@@ -588,7 +604,7 @@ class RollbackFirmware(FirmwareUpdate):
         if not os.path.exists(self.rollback_fw_tar) or not tarfile.is_tarfile(self.rollback_fw_tar):
             print('No rollback firmware exists')
             print('It could be that you have not done any upgrades')
-            sys.exit(1)
+            return ErrorCode.ROLLBACKERR.value
 
         try:
             with tarfile.open(self.rollback_fw_tar) as f:
@@ -655,18 +671,18 @@ def main(argv):
         args = parser.parse_args()
     except IOError as e:
         print(e.strerror, file=sys.stderr)
-        exit(1)
+        return ErrorCode.ARGERR.value
 
     if not args.quiet:
         update_input = input(
             "\nWarning: Update may render device unbootable. Continue (y/N)? ")
         if not update_input == "y":
-            sys.exit(1)
+            return ErrorCode.CANCEL.value
 
     if not args.quiet and (args.force or args.reset):
         erase_env_input = input("\nWarning: All U-Boot environment variables will be reset to factory settings. Continue (y/N)? ")
         if not erase_env_input == "y":
-            sys.exit(1)
+            return ErrorCode.CANCEL.value
     try:
         if args.force:
             # When forced, ignore all the checking and call the underlying updater directly
@@ -680,16 +696,20 @@ def main(argv):
             if not args.quiet:
                 rollback_confirm = input("\nRollback the firmware to the version before the upgrade (y/N)?")
                 if not rollback_confirm == "y":
-                    sys.exit(1)
-            updater.rollback_firmware()
-            sys.exit(1)
+                    return ErrorCode.CANCEL.value
+            ret = updater.rollback_firmware()
+            if ErrorCode.ROLLBACKERR.value == ret:
+                return ret
+            return ErrorCode.SUCCESS.value
 
         envlist = None
         if not args.force and not args.reset:
             envlist = updater.get_preserved_uboot_env(args.preserve_list)
 
         if not args.no_backup:
-            updater.backup_firmware()
+            ret = updater.backup_firmware()
+            if ErrorCode.BKUPERR.value == ret:
+                return ret
         updater.update_firmware()
 
         if envlist:
@@ -706,7 +726,7 @@ def main(argv):
 
         if args.reboot:
             os.system('reboot')
-        sys.exit(1)
+        return ErrorCode.SUCCESS.value
     except UpgradeError as e:
         print(e)
         intput_reminder = '''
@@ -720,12 +740,16 @@ Hit any Key to Exit:
         # Rollback the firmware when the upgrade fails
         try:
             print('Warning: Upgrade failed, rollback started')
-            updater.rollback_firmware()
+            ret = updater.rollback_firmware()
+            if ErrorCode.ROLLBACKERR.value == ret:
+                return ret
         except UpgradeError:
             print("Rollback failed")
 
         input(intput_reminder)
+        return ErrorCode.ROLLBACKERR.value
 
 
 if __name__ == '__main__':
-    main(sys.argv)
+    code = main(sys.argv)
+    exit(code)
