@@ -14,14 +14,16 @@ SRC_URI = "file://update.conf.json \
 		   file://iot2050-fwu-update-json.sh"
 
 inherit dpkg-raw
+inherit image
 
-DEPENDS = "u-boot-iot2050-pg1"
-# DEPENDS = "u-boot-iot2050-pg1 u-boot-iot2050-pg2"
+PROVIDES = "u-boot-iot2050-pg1 u-boot-iot2050-pg2"
+# DEPENDS = "u-boot-iot2050-pg1"
 
 do_deploy_deb[nostamp] = "1"
 
 do_deploy_deb() {
-    echo "I am deploying!"
-	sh ${WORKDIR}/iot2050-fwu-update-json.sh ${WORKDIR} ${DEPLOY_DIR_IMAGE}
+    echo "get_build_id or bb.build.exec_func('get_build_id', d)"
+    # Generate the firmware package
+	sh ${WORKDIR}/iot2050-fwu-update-json.sh ${WORKDIR} ${DEPLOY_DIR_IMAGE} get_build_id
 }
 do_deploy_deb[dirs] = "${DEPLOY_DIR_IMAGE}"
