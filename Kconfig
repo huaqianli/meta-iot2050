@@ -50,6 +50,13 @@ config IMAGE_BOOT_PG2
 	  that it fits AND you have an external flash programmer at hand that
 	  allows to recover. Otherwise you risk to BRICK THE IOT2050!
 
+config IMAGE_FWU_PKG
+	bool "Firmware update package for all devices"
+	help
+	  This is the official firmware update package in IOT2050-FWU-PKG-Vx.x.x.tar.xz
+	  format, which includes firmware bin, and update criteria, and builtin env,
+	  and it is for all IOT2050 devices.
+
 endchoice
 
 config KAS_INCLUDE_MAIN
@@ -58,6 +65,7 @@ config KAS_INCLUDE_MAIN
 	default "kas-iot2050-swupdate.yml" if IMAGE_SWUPDATE
 	default "kas-iot2050-boot-pg1.yml" if IMAGE_BOOT_PG1
 	default "kas-iot2050-boot-pg2.yml" if IMAGE_BOOT_PG2
+	default "kas-iot2050-fwu-build.yml" if IMAGE_FWU_PKG
 
 comment "Image features"
 
