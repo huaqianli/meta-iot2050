@@ -11,19 +11,17 @@ DESCRIPTION = "Generate The Firmware Update Package"
 MAINTAINER = "huaqian.li@siemens.com"
 
 SRC_URI = "file://update.conf.json \
-		   file://iot2050-fwu-update-json.sh"
+           file://iot2050-fwu-update-json.sh"
 
 inherit dpkg-raw
-# inherit image
-
-PROVIDES = "u-boot-iot2050-pg1 u-boot-iot2050-pg2"
-# DEPENDS = "u-boot-iot2050-pg1"
+# DEPENDS += "u-boot-iot2050-pg1 u-boot-iot2050-pg2"
+#do_deploy_deb[depends] += "u-boot-iot2050-pg2:do_deploy firmware-package2:do_deploy_deb firmware-package:do_deploy_deb"
+do_deploy_deb[depends] += "u-boot-iot2050-pg1:do_deploy u-boot-iot2050-pg2:do_deploy"
 
 do_deploy_deb[nostamp] = "1"
 
 do_deploy_deb() {
-    echo "get_build_id or bb.build.exec_func('get_build_id', d)"
     # Generate the firmware update package
-	sh ${WORKDIR}/iot2050-fwu-update-json.sh ${WORKDIR} ${DEPLOY_DIR_IMAGE} get_build_id
+    sh ${WORKDIR}/iot2050-fwu-update-json.sh ${WORKDIR} ${DEPLOY_DIR_IMAGE} $(${ISAR_RELEASE_CMD})
 }
 do_deploy_deb[dirs] = "${DEPLOY_DIR_IMAGE}"
