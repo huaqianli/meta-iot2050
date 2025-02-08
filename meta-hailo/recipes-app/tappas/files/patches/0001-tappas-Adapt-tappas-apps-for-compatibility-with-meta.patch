@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Li Hua Qian <huaqian.li@siemens.com>
+Date: Thu, 27 Feb 2025 17:09:24 +0800
+Subject: [PATCH] tappas: Adapt tappas apps for compatibility with meta-iot2050
+
+Signed-off-by: Li Hua Qian <huaqian.li@siemens.com>
+---
+ apps/h8/gstreamer/imx8/detection/detection.sh               | 6 +++---
+ .../license_plate_recognition/license_plate_recognition.sh  | 2 +-
+ .../imx8/multistream_detection/multi_stream_detection.sh    | 2 +-
+ 3 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/apps/h8/gstreamer/imx8/detection/detection.sh b/apps/h8/gstreamer/imx8/detection/detection.sh
+index 62391831471d..58119c44291e 100755
+--- a/apps/h8/gstreamer/imx8/detection/detection.sh
++++ b/apps/h8/gstreamer/imx8/detection/detection.sh
+@@ -61,16 +61,16 @@ init_variables $@
+ parse_args $@
+ 
+ PIPELINE="gst-launch-1.0 \
+-    v4l2src device=$input_source ! video/x-raw,format=YUY2,width=1280,height=720,framerate=30/1 ! \
++    v4l2src device=$input_source ! video/x-raw,format=YUY2,width=640,height=480,framerate=30/1 ! \
+     queue leaky=downstream max-size-buffers=5 max-size-bytes=0 max-size-time=0 ! \
++    videoconvert ! videoscale ! video/x-raw,format=YUY2,width=1280,height=720,framerate=30/1 ! \
+     hailonet hef-path=$hef_path ! \
+     queue leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! \
+     hailofilter function-name=$network_name config-path=$json_config_path so-path=$postprocess_so qos=false ! \
+     queue leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! \
+     hailooverlay ! \
+     queue leaky=downstream max-size-buffers=5 max-size-bytes=0 max-size-time=0 ! \
+-    videoconvert ! \
+-    fpsdisplaysink video-sink=autovideosink name=hailo_display sync=false text-overlay=false ${additional_parameters}"
++    videoconvert ! avimux ! filesink location=output.avi"
+ 
+ echo "Running $network_name"
+ echo ${PIPELINE}
+diff --git a/apps/h8/gstreamer/imx8/license_plate_recognition/license_plate_recognition.sh b/apps/h8/gstreamer/imx8/license_plate_recognition/license_plate_recognition.sh
+index d9d611129ea8..f9c313a7ae5c 100755
+--- a/apps/h8/gstreamer/imx8/license_plate_recognition/license_plate_recognition.sh
++++ b/apps/h8/gstreamer/imx8/license_plate_recognition/license_plate_recognition.sh
+@@ -167,7 +167,7 @@ PIPELINE="${debug_stats_export} gst-launch-1.0 ${stats_element} \
+     queue leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! \
+     hailooverlay line-thickness=3 font-thickness=1 qos=false ! \
+     hailofilter use-gst-buffer=true so-path=$LPR_OVERLAY qos=false ! \
+-    fpsdisplaysink video-sink=autovideosink name=hailo_display sync=$sync_pipeline text-overlay=false \
++    videoconvert ! avimux ! filesink location=output.avi \
+     $tee_name. ! \
+     $pipeline_1 ! \
+     hailofilter use-gst-buffer=true so-path=$LPR_OCR_SINK qos=false ! \
+diff --git a/apps/h8/gstreamer/imx8/multistream_detection/multi_stream_detection.sh b/apps/h8/gstreamer/imx8/multistream_detection/multi_stream_detection.sh
+index aff1f17e618a..48e4e4d45900 100755
+--- a/apps/h8/gstreamer/imx8/multistream_detection/multi_stream_detection.sh
++++ b/apps/h8/gstreamer/imx8/multistream_detection/multi_stream_detection.sh
+@@ -98,7 +98,7 @@ function main() {
+            streamiddemux name=sid compositor name=comp start-time-selection=0 $compositor_locations ! \
+            queue name=hailo_video_q_0 leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! \
+            videoconvert ! queue name=hailo_display_q_0 leaky=no max-size-buffers=30 max-size-bytes=0 max-size-time=0 ! \
+-           fpsdisplaysink video-sink=\" $videosink \" name=hailo_display sync=false text-overlay=false \
++           videoconvert ! avimux ! filesink location=output.avi \
+            $sources ${additional_parameters}"
+ 
+     echo ${pipeline}
