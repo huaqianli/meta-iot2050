@@ -7,4 +7,4 @@
 
 require linux-iot2050-6.1.inc
 
-SRC_URI[sha256sum] = "d14dd53b262d415e1a2e80a9dc6977156248ee403b00833ded66e126fb7139f3"
+SRC_URI[sha256sum] = "49a702507398f3ab10d4ad744b4561983fbfa6d92dde9e10a9582d7bddc7f32d"
