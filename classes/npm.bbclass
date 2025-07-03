@@ -88,8 +88,16 @@ def get_npm_bundled_tgz(d):
 
 def runcmd(d, cmd):
     import subprocess
+    import shlex
 
-    chrootcmd = "schroot -c {0} -- {1}".format(d.getVar('SBUILD_CHROOT'), cmd)
+    if '\n' in cmd.strip():
+        # For multi-line commands, use bash -c with proper escaping
+        escaped_cmd = shlex.quote(cmd.strip())
+        chrootcmd = "schroot -c {0} -- bash -c {1}".format(
+            d.getVar('SBUILD_CHROOT'), escaped_cmd)
+    else:
+        chrootcmd = "schroot -c {0} -- {1}".format(
+            d.getVar('SBUILD_CHROOT'), cmd.strip())
     bb.note("Running " + chrootcmd)
     (retval, output) = subprocess.getstatusoutput(chrootcmd)
     if retval:
@@ -166,7 +174,27 @@ python fetch_npm() {
         json_objs = {'dependencies': { npmpn: '' }}
         json.dump(json_objs, outfile, indent=2)
 
+    npm_local_install_dir = d.getVar('NPM_LOCAL_INSTALL_DIR')
+    if not npm_local_install_dir:
+        cache_dir = tmpdir + "/npm_cache"
+        runcmd(d, f"mkdir -p {cache_dir}")
+        os.environ['npm_config_cache'] = cache_dir
+
     runcmd(d, "npm ci --global-style --ignore-scripts --verbose")
+
+    if not npm_local_install_dir:
+        # Extract all package names from node_modules and cache them
+        runcmd(d, f'''
+            find node_modules -name "package.json" -not -path "*/.*" | while read pkgjson; do
+                if [ -f "$pkgjson" ]; then
+                    pkgname=$(node -pe "JSON.parse(require('fs').readFileSync('$pkgjson', 'utf8')).name" 2>/dev/null)
+                    if [ -n "$pkgname" ] && [ "$pkgname" != "null" ]; then
+                        npm cache add "$pkgname" 2>/dev/null || echo "Failed to cache $pkgname"
+                    fi
+                fi
+            done
+        ''')
+        runcmd(d, f"cp -r {cache_dir} node_modules/{npmpn}/")
 
     package_filename = "node_modules/" + npmpn + "/package.json"
     with open(package_filename) as infile:
@@ -243,9 +271,13 @@ override_dh_clean:
 	rm -rf $(npm_config_cache)
 
 override_dh_auto_build:
+	if [ -z "${NPM_LOCAL_INSTALL_DIR}" ]; then \
+		echo "npm_config_cache=${npm_config_cache}"; \
+		tar -xf /downloads/${@get_npm_bundled_tgz(d)} --strip-components=1 -C ${PP}/ --keep-old-files package/npm_cache; \
+	fi
 	cd ${CHDIR} && npm install ${INSTALL_FLAGS} ${NPM_INSTALL_FLAGS} /downloads/${@get_npm_bundled_tgz(d)}
 	if [ -n "${NPM_LOCAL_INSTALL_DIR}" ]; then \
-	    rm -f ${CHDIR}/node_modules/.package-lock.json; \
+		rm -f ${CHDIR}/node_modules/.package-lock.json; \
 	fi
 
 # disable slow stripping - not enough value for our ad-hoc npm packaging
