@@ -4,6 +4,53 @@ This [Isar](https://github.com/ilbers/isar) layer contains recipes,
 configuration and other artifacts that are specific to  Debian-based IOT2050
 product.
 
+## Available Layers
+
+This project is organized into modular layers that can be combined as needed:
+
+- **`meta/`** - Base BSP layer (hardware enablement, always required)
+- **`meta-example/`** - Demo applications and development tools
+- **`meta-node-red/`** - Node-RED visual programming environment
+- **`meta-sm/`** - SM board variant support
+- **`meta-hailo/`** - AI/ML acceleration with Hailo cards (existing)
+
+Additional optional features are available in `kas/opt/` directory.
+
+## Build Configuration
+
+### Main Build Types
+
+```shell
+# Minimal system (hardware enablement only)
+./kas-container build kas-iot2050-minimal.yml
+
+# Full example with demos, Node-RED, and SM support
+./kas-container build kas-iot2050-example.yml
+
+# Add optional features to any base
+./kas-container build kas-iot2050-minimal.yml:kas/opt/hailo.yml
+./kas-container build kas-iot2050-example.yml:kas/opt/hailo.yml
+```
+
+### Modular Feature Addition
+
+```shell
+# Add specific layers to minimal system
+./kas-container build kas-iot2050-minimal.yml:kas/opt/node-red.yml
+./kas-container build kas-iot2050-minimal.yml:kas/opt/sm.yml
+
+# Combine multiple optional features
+./kas-container build kas-iot2050-example.yml:kas/opt/hailo.yml:kas/opt/eio.yml
+```
+
+### Legacy Menu Interface
+
+You can also use the legacy menu interface:
+
+```shell
+./kas-container menu
+```
+
 ## Build example image
 
 Before building the system, you will need to install docker on build host. For
@@ -60,10 +107,40 @@ avaiable, to build it with:
 To build the example image with the Hailo8 AI card support:
 
 ```shell
-./kas-container build kas-iot2050-example.yml:kas/opt/meta-hailo.yml
+./kas-container build kas-iot2050-example.yml:kas/opt/hailo.yml
 ```
 
 Please visit [meta-hailo](./meta-hailo/README.md) for the details.
+
+### Build with security features
+
+The IoT2050 supports various security features organized through modular packagegroups:
+
+#### Basic secure boot support
+
+```shell
+./kas-container build kas-iot2050-example.yml:kas/opt/secure-boot.yml
+```
+
+#### Security with TPM support
+
+```shell
+./kas-container build kas-iot2050-example.yml:kas/opt/security-tpm.yml
+```
+
+#### Full security stack
+
+```shell
+./kas-container build kas-iot2050-example.yml:kas/opt/security-full.yml
+```
+
+The security packagegroups include:
+- **Base security**: OP-TEE OS, OP-TEE client, and ARM Trusted Firmware-A
+- **Secure boot**: Boot signing tools and secure boot key provisioning
+- **TPM support**: OP-TEE-based fTPM (Firmware Trusted Platform Module)
+- **Full security**: Complete security stack with all components
+
+For detailed secure boot provisioning procedures, see [meta/recipes-bsp/secure-boot-otp-provisioning/README.md](./meta/recipes-bsp/secure-boot-otp-provisioning/README.md).
 
 ## Build user SDK
 >>>

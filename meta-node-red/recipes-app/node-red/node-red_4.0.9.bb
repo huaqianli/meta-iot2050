@@ -9,7 +9,7 @@
 # COPYING.MIT file in the top-level directory.
 # 
 # To update the npm-shrinkwrap.json file, ensure you follow the guidelines
-# provided in classes/npm.bbclass.
+# provided in meta-node-red/classes/npm.bbclass.
 #
 
 PR = "1"

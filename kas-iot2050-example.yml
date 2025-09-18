@@ -12,10 +12,17 @@ header:
   version: 14
   includes:
    - kas/iot2050.yml
+   - kas/opt/example.yml
 
 build_system: isar
 
 target: iot2050-image-example
+
+repos:
+  meta-iot2050:
+    layers:
+      # Additional layers beyond base and example
+      # (example.yml already includes meta-example, meta-node-red, meta-sm)
 
 local_conf_header:
   root_password: |

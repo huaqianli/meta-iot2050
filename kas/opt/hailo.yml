@@ -1,11 +1,13 @@
 #
-# Copyright (c) Siemens AG, 2024
+# IoT2050 Hailo AI/ML Optional Configuration
+# Adds Hailo AI acceleration support to any base configuration
+#
+# Copyright (c) Siemens AG, 2024 - 2025
 #
 # Authors:
 #  Li Hua Qian <huaqian.li@siemens.com>
 #
-# This file is subject to the terms and conditions of the MIT License.  See
-# COPYING.MIT file in the top-level directory.
+# SPDX-License-Identifier: MIT
 #
 
 header:

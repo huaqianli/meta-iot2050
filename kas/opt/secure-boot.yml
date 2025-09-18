@@ -17,3 +17,6 @@ local_conf_header:
     IMAGER_INSTALL += "ebg-secure-boot-signer"
   secure-boot-fw-ver: |
     FIRMWARE_SECURE_VER ?= "0"
+  security_packages: |
+    # Enable secure boot security components
+    IMAGE_INSTALL += "packagegroup-iot2050-security-secureboot"

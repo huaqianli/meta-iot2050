@@ -8,7 +8,7 @@
 # COPYING.MIT file in the top-level directory.
 #
 
-require recipes-core/images/iot2050-image-base.bb
+require meta/recipes-core/images/iot2050-image-base.bb
 require recipes-core/images/iot2050-package-selections.inc
 
 DESCRIPTION = "IOT2050 Debian Example Image"
@@ -43,33 +43,22 @@ IMAGE_INSTALL += " \
     tcf-agent \
     mraa \
     ${@ 'board-conf-tools' if d.getVar('QEMU_IMAGE') != '1' else '' } \
-    libteec1 \
-    optee-client-dev \
-    tee-supplicant \
-    iot2050-event-record \
+    packagegroup-iot2050-security \
     linux-headers-${KERNEL_NAME} \
     iot2050-proximity-driver \
     "
 
-IOT2050_NODE_RED_SUPPORT ?= "1"
+IMAGE_INSTALL += "${@ 'packagegroup-iot2050-node-red' if d.getVar('IOT2050_NODE_RED_SUPPORT') == '1' else ''}"
 
-IMAGE_INSTALL += "${@ ' \
-    node-red \
-    node-red-gpio \
-    node-red-preinstalled-nodes \
-    ' if d.getVar('IOT2050_NODE_RED_SUPPORT') == '1' else ''}"
+# SM variant packages - include when meta-sm layer is available
+IMAGE_INSTALL += "${@ 'packagegroup-iot2050-sm' if bb.utils.contains('BBFILE_COLLECTIONS', 'meta-sm', True, False, d) else ''}"
 
 IOT2050_EIO_SUPPORT ?= "0"
 
-IMAGE_INSTALL += "${@ ' \
-    iot2050-eio-manager \
-    iot2050-conf-webui \
-    ' if d.getVar('IOT2050_EIO_SUPPORT') == '1' else ''}"
+IMAGE_INSTALL += "${@ 'packagegroup-iot2050-sm-eio' if d.getVar('IOT2050_EIO_SUPPORT') == '1' else ''}"
 
 IOT2050_MODULE_FWU ?= "0"
-IMAGE_INSTALL += "${@ ' \
-    iot2050-module-firmware-update \
-    ' if d.getVar('IOT2050_MODULE_FWU') == '1' else '' }"
+IMAGE_INSTALL += "${@ 'packagegroup-iot2050-sm-module-fwu' if d.getVar('IOT2050_MODULE_FWU') == '1' else '' }"
 
 IOT2050_META_HAILO ?= "0"
 IMAGE_INSTALL += "${@ ' \

@@ -1,4 +1,8 @@
 #
+# IoT2050 Module Firmware Update Configuration
+# Enables module firmware update functionality
+# NOTE: Requires meta-sm layer for module firmware update packages
+#
 # Copyright (c) Siemens AG, 2024
 #
 # Authors:

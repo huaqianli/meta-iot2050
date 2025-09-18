@@ -1,0 +1,19 @@
+#
+# IoT2050 TPM/fTPM Security Configuration
+# Enables Trusted Platform Module functionality
+#
+# Copyright (c) Siemens AG, 2025
+#
+# Authors:
+#  Li Hua Qian <huaqian.li@siemens.com>
+#
+# SPDX-License-Identifier: MIT
+#
+
+header:
+  version: 14
+
+local_conf_header:
+  tpm_security: |
+    # Enable TPM security components
+    IMAGE_INSTALL += "packagegroup-iot2050-security-tpm"

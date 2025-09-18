@@ -1,4 +1,8 @@
 #
+# IoT2050 EIO Support Configuration
+# Enables External I/O management features
+# NOTE: Requires meta-sm layer for EIO packages
+#
 # Copyright (c) Siemens AG, 2023
 #
 # Authors:

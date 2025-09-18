@@ -1,0 +1,24 @@
+# IoT2050 WIC (OpenEmbedded Image Creator) file
+#
+# This file defines the disk layout for IoT2050 images
+#
+# Copyright (c) Siemens AG, 2025
+#
+# Authors:
+#  Li Hua Qian <huaqian.li@siemens.com>
+#
+# SPDX-License-Identifier: MIT
+
+# EFI System Partition
+part /boot/efi --source bootimg-efi --sourceparams="loader=u-boot" --ondisk sda --label efi --part-type=EF00 --align 1024 --size 64
+
+# Boot partition for kernel and device trees
+part /boot --source isar-rootfs --rootfs-dir=${WORKDIR}/boot-rootfs --ondisk sda --fstype=ext4 --label boot --align 1024 --size 256
+
+# Root filesystem partition
+part / --source isar-rootfs --ondisk sda --fstype=ext4 --label root --align 1024 --size 2048 --extra-space 512
+
+# Data partition for user data
+part /var/lib/iot2050 --ondisk sda --fstype=ext4 --label data --align 1024 --size 1024
+
+bootloader --ptable gpt --timeout=3 --append="console=ttyS2,115200 earlycon=ns16550a,mmio32,0x02800000"

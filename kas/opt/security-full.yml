@@ -1,0 +1,19 @@
+#
+# IoT2050 Full Security Configuration
+# Enables complete security stack including secure boot, TPM, and all security features
+#
+# Copyright (c) Siemens AG, 2025
+#
+# Authors:
+#  Li Hua Qian <huaqian.li@siemens.com>
+#
+# SPDX-License-Identifier: MIT
+#
+
+header:
+  version: 14
+
+local_conf_header:
+  full_security: |
+    # Enable complete security stack
+    IMAGE_INSTALL += "packagegroup-iot2050-security-full"
