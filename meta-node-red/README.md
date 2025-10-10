@@ -2,39 +2,45 @@
 
 ## Overview
 
-The `meta-node-red` layer provides Node-RED support for the IoT2050 platform. Node-RED is a flow-based development tool for visual programming of IoT applications.
+The `meta-node-red` layer provides support for Node-RED, a flow-based
+development tool for visual programming of IoT applications, on the IoT2050
+platform.
 
 ## Pre-installed Nodes
 
+The following Node-RED packages are pre-installed:
+
 | Node Package | Purpose |
 |--------------|---------|
-| node-red | Core Node-RED runtime |
-| node-red-contrib-opcua | OPC-UA communication |
-| node-red-contrib-modbus | Modbus protocol support |
-| node-red-contrib-s7 | Siemens S7 PLC integration |
-| node-red-dashboard | Web dashboard creation |
-| node-red-gpio | Hardware GPIO control |
-| node-red-node-serialport | Serial port communication |
-| node-red-node-sqlite | SQLite database nodes |
-| node-red-node-random | Random number generation |
-| mindconnect-node-red-contrib-mindconnect | MindConnect IoT platform |
+| `node-red` | Core Node-RED runtime |
+| `node-red-contrib-opcua` | OPC-UA communication |
+| `node-red-contrib-modbus` | Modbus protocol support |
+| `node-red-contrib-s7` | Siemens S7 PLC integration |
+| `node-red-dashboard` | Web dashboard creation |
+| `node-red-gpio` | Hardware GPIO control |
+| `node-red-node-serialport` | Serial port communication |
+| `node-red-node-sqlite` | SQLite database nodes |
+| `node-red-node-random` | Random number generation |
+| `mindconnect-node-red-contrib-mindconnect` | MindConnect IoT platform integration |
 
 ## Getting Started
 
 ### Build
-```bash
-./kas-container build kas/iot2050-example.yml  # Includes Node-RED
+Node-RED is included in the example image by default:
+```sh
+./kas-container build kas-iot2050-example.yml
 ```
+
 ### Access Node-RED
-1. Browse to `http://<IOT2050_IP>:1880` (default Node-RED port 1880)
-2. Start creating flows by dragging nodes
-3. Deploy flows to activate them
+1. Open a web browser and navigate to `http://<IOT2050_IP>:1880`. The default
+   port for Node-RED is **1880**.
+2. Start creating flows by dragging nodes from the palette.
+3. Click the **Deploy** button to activate your flows.
 
+### Maintainers
 
-## Maintainers
+See the top-level `MAINTAINERS` file in the repository root.
 
-See top-level `MAINTAINERS` file in the repository root.
+### License
 
-## License
-
-MIT License - See COPYING.MIT in repository root.
+MIT License - See `COPYING.MIT` in the repository root.

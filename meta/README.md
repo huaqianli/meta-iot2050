@@ -2,28 +2,33 @@
 
 ## Overview
 
-The `meta` layer provides hardware enablement for the Siemens IoT2050 platform. This layer contains only essential components required to boot Debian on IoT2050 hardware.
+The `meta` layer provides the core hardware enablement for the Siemens IoT2050
+platform. This layer contains only the essential components required to boot a
+Debian-based OS on IoT2050 hardware.
 
-## Purpose
+## Scope & Purpose
 
-- **Hardware enablement only** - no applications or demo components
-- **Minimal bootable system** - essential packages for IoT2050 operation
-- **Foundation layer** - other layers depend on this BSP layer
+- **Hardware Enablement Only**: Does not include applications, demos, or
+  optional features.
+- **Minimal Bootable System**: Contains only the essential packages for
+  IoT2050 hardware operation.
+- **Foundation Layer**: All other feature and variant layers depend on this
+  core BSP layer.
 
 ## Contents
 
 ### Machine Configuration
-- `conf/machine/iot2050.conf` - Main machine definition
-- `conf/distro/` - Distribution configurations (if any)
+- `conf/machine/iot2050.conf`: The main machine definition.
+- `conf/distro/`: Distribution-specific configurations.
 
 ### Recipes
-- `recipes-bsp/` - Bootloader (U-Boot) and firmware
-- `recipes-kernel/` - Linux kernel and device trees
-- `recipes-core/images/` - Base image recipe
-- `recipes-core/packagegroups/` - Hardware package groups
+- `recipes-bsp/`: Bootloader (U-Boot) and firmware.
+- `recipes-kernel/`: Linux kernel and device trees.
+- `recipes-core/images/`: The base image recipe.
+- `recipes-core/packagegroups/`: Hardware-specific package groups.
 
 ### Images
-- `iot2050-base-image` - Minimal bootable image with hardware support only
+- `iot2050-base-image`: A minimal bootable image with hardware support only.
 
 ## Key Features
 
@@ -35,19 +40,20 @@ The `meta` layer provides hardware enablement for the Siemens IoT2050 platform. 
 
 ## Dependencies
 
-- **isar** - Base Isar framework
-- **cip-core** - Security and compliance features
+- **isar**: The base Isar framework.
+- **cip-core**: Security and compliance features.
 
 ## Build
 
-```bash
-kas build kas/iot2050-base.yml
+To build the minimal base image defined in this layer:
+```sh
+kas build kas/iot2050.yml
 ```
 
 ## Maintainers
 
-See top-level `MAINTAINERS` file in the repository root.
+See the top-level `MAINTAINERS` file in the repository root.
 
 ## License
 
-MIT License - See COPYING.MIT in repository root.
+MIT License - See `COPYING.MIT` in the repository root.
