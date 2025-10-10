@@ -1,8 +1,10 @@
 # meta-sm – IoT2050 SM Variant Layer
 
-_Applies to meta-iot2050 v1.6.0+ modular layout._  This layer supplies the
-optional SM (Sensor / Extended IO) variant user-space components and device
-tree for boards equipped with the additional peripherals.
+_Applies to meta-iot2050 v1.6.0+ modular layout._  
+
+This layer supplies the optional SM (Sensor / Extended IO) variant
+user-space components and device tree for boards equipped with the
+additional peripherals.
 
 ## 1. Overview
 
