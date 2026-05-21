@@ -1,0 +1,217 @@
+#!/bin/sh
+#
+# Copyright (c) Siemens AG, 2022-2026
+#
+# Authors:
+#  Baocheng Su <baocheng.su@siemens.com>
+#  Huaqian Lee <huaqian.li@siemens.com>
+#
+# SPDX-License-Identifier: MIT
+
+set -e
+
+usage()
+{
+	printf "%b" "Usage: $0 provision ITSFILE KEYFILE1 KEYFILE2 [KEYFILE3]\n"
+	printf "%b" "       $0 switch ITSFILE KEYFILE1 KEYFILE2\n"
+	printf "%b" "\nPositional arguments:\n"
+	printf "%b" "provision\t\tMake the otpcmd data for key provisioning "\
+				"and secure boot enabling.\n"
+	printf "%b" "switch\t\t\tMake the otpcmd data for switching the "\
+				"current effective key.\n"
+	printf "%b" "ITSFILE\t\tThe its file.\n"
+	printf "%b" "KEYFILE1\t\tThe first key in pem format.\n"
+	printf "%b" "KEYFILE2\t\tThe second key in pem format.\n"
+	printf "%b" "\nOptional arguments:\n"
+	printf "%b" "KEYFILE3\t\tThe third key in pem format. "\
+				"No need to provide it for key switching\n"
+
+	exit 1
+}
+
+# Generate x509 Template
+X509_TEMPLATE=x509-template.txt
+gen_template()
+{
+[ -f "$X509_TEMPLATE" ] && rm $X509_TEMPLATE
+cat << EOF > $X509_TEMPLATE
+[ req ]
+distinguished_name     = req_distinguished_name
+x509_extensions        = v3_ca
+prompt                 = no
+dirstring_type         = nobmp
+
+[ req_distinguished_name ]
+C                      = CN
+ST                     = Sichuan
+L                      = Chengdu
+O                      = Siemens AG
+OU                     = SEWC
+CN                     = Siemens AG
+emailAddress           = IOT2000.industry@siemens.com
+
+[ v3_ca ]
+basicConstraints       = CA:true
+1.3.6.1.4.1.294.1.3    = ASN1:SEQUENCE:swrv
+1.3.6.1.4.1.294.1.34   = ASN1:SEQUENCE:sysfw_image_integrity
+1.3.6.1.4.1.294.1.35   = ASN1:SEQUENCE:sysfw_image_load
+
+[ swrv ]
+swrv = INTEGER:0
+
+[ sysfw_image_integrity ]
+shaType                = OID:2.16.840.1.101.3.4.2.3
+shaValue               = FORMAT:HEX,OCT:TEST_IMAGE_SHA_VAL
+imageSize              = INTEGER:TEST_IMAGE_LENGTH
+
+[ sysfw_image_load ]
+destAddr = FORMAT:HEX,OCT:fffffffe
+authInPlace = INTEGER:2
+EOF
+}
+
+case "$1" in
+	provision)
+		[ $# -gt 3 ] || usage
+		shift 1
+		ITS=$1
+		shift 1
+		KEY1=$1
+		shift 1
+		KEY2=$1
+		if [ $# -gt 1 ]; then
+			shift 1
+			KEY3=$1
+		fi
+		;;
+	switch)
+		[ $# -eq 4 ] || usage
+		shift 1
+		ITS=$1
+		shift 1
+		KEY1=$1
+		shift 1
+		KEY2=$1
+		KEY_SWITCH=y
+		;;
+	*)
+		usage
+		;;
+esac
+
+[ -f "$ITS" ] || { echo "[$ITS] does not exist!"; exit 1; }
+[ -f "$KEY1" ] || { echo "KEY1 [$KEY1] does not exist!"; exit 1; }
+[ -f "$KEY2" ] || { echo "KEY2 [$KEY2] does not exist!"; exit 1; }
+[ -z "$KEY3" ] || [ -f "$KEY3" ] || { echo "KEY3 [$KEY3] does not exist!"; exit 1; }
+
+get_key_type()
+{
+	file_path=$1
+	first_line=$(head -n 1 "$file_path")
+
+	if echo "$first_line" | grep -q "BEGIN RSA PRIVATE KEY" || \
+	   echo "$first_line" | grep -q "BEGIN PRIVATE KEY"; then
+		echo "key"
+	elif echo "$first_line" | grep -q "BEGIN CERTIFICATE"; then
+		echo "certificate"
+	else
+		echo "invalid"
+	fi
+}
+KEY_TYPE=$(get_key_type "$KEY1")
+
+generate_keyhash()
+{
+	openssl dgst -sha256 -binary -out "$1"
+}
+
+gen_pubkey_hash()
+{
+	KEY_PATH=$1
+	KEYHASH=$2
+	DUMMY_KEY_HASHES=" \
+	fb337ffb16be62fc4a97e62bf80faab1506b5f6e4231d6fec1dd01429ba016e3 \
+	1e436ba092a4a134102ac68489cf64d5978fb28813d348b94331c98194dd7a09 \
+	fcdf0f123e9a4eba4c8fd4f7b375e110c10fe4c4b916bb800c7a27466c5d791a"
+
+	case $KEY_TYPE in
+		key)
+			openssl rsa -in "$KEY_PATH" -pubout -outform der 2>/dev/null | \
+				generate_keyhash "$KEYHASH"
+			;;
+		certificate)
+			openssl x509 -in "$KEY_PATH" -pubkey -noout | \
+				openssl pkey -pubin -outform der 2>/dev/null | \
+				generate_keyhash "$KEYHASH"
+			;;
+		*)
+			echo "$KEY_PATH does not appear to be a valid key or certificate."
+			return 1
+			;;
+	esac
+
+	HASHSTR=$(hexdump -ve '1/1 "%.2x"' "$KEYHASH")
+
+	for dummy in $DUMMY_KEY_HASHES; do
+		if [ "$dummy" = "$HASHSTR" ]; then
+			echo "Warning: Dummy key $KEY_PATH is used for OTP provisioning!" 1>&2;
+		fi
+	done
+}
+
+if [ -z "$KEY_SWITCH" ]; then
+	# key[1-3]\.sha256 are used in its file ($ITS)
+	KEY1_HASH=key1.sha256
+	KEY2_HASH=key2.sha256
+	KEY3_HASH=key3.sha256
+	gen_pubkey_hash "$KEY1" "$KEY1_HASH"
+	gen_pubkey_hash "$KEY2" "$KEY2_HASH"
+	[ -f "$KEY3" ] && gen_pubkey_hash "$KEY3" "$KEY3_HASH"
+fi
+
+FIT_IMAGE=target.fit
+mkimage -f "$ITS" "$FIT_IMAGE"
+
+if [ -z "$KEY_SWITCH" ]; then
+	rm "$KEY1_HASH" "$KEY2_HASH"
+	[ -f "$KEY3_HASH" ] && rm "$KEY3_HASH"
+fi
+
+sign_image()
+{
+	KEY=$1
+	IMAGE=$2
+	IMAGE_SIGNED=$3
+
+	TEMP_X509=x509-temp.cert
+
+	SHA_VAL=$(openssl dgst -sha512 -hex "$IMAGE" | sed -e "s/^.*= //g")
+	BIN_SIZE=$(wc -c < "$IMAGE")
+
+	gen_template
+
+	sed -e "s/TEST_IMAGE_LENGTH/$BIN_SIZE/"	\
+		-e "s/TEST_IMAGE_SHA_VAL/$SHA_VAL/" "$X509_TEMPLATE" > "$TEMP_X509"
+
+	if [ "$KEY_TYPE" = "certificate" ]; then
+		KEY=$SB_SIGN_KEY
+	fi
+
+	# shellcheck disable=SC2086  # SB_SIGN_OPT intentionally expands to openssl options.
+	openssl req -new -x509 ${SB_SIGN_OPT:+$SB_SIGN_OPT} -key $KEY -noenc \
+		-outform DER -out "$IMAGE".cert -config "$TEMP_X509" -sha512
+	
+	cat "$IMAGE".cert "$IMAGE" > "$IMAGE_SIGNED"
+	
+	rm "$TEMP_X509" "$IMAGE".cert "$IMAGE" "$X509_TEMPLATE"
+}
+
+OTPCMD=otpcmd.bin
+sign_image "$KEY1" "$FIT_IMAGE" "$OTPCMD"
+
+if [ "$KEY_TYPE" = "certificate" ]; then
+	echo "Info: Key switching is not supported for certificate key yet."
+elif [ -n "$KEY_SWITCH" ]; then
+	mv "$OTPCMD" "$OTPCMD.1st"
+	sign_image "$KEY2" "$OTPCMD.1st" "$OTPCMD"
+fi

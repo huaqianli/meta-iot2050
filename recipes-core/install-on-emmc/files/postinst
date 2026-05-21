@@ -1,3 +1,0 @@
-#!/bin/sh
-
-systemctl enable install-on-emmc-on-first-boot.service
