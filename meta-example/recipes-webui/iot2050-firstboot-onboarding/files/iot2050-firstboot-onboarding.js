@@ -37,6 +37,7 @@ const CONTENT_TYPES = {
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.ico': 'image/x-icon',
+  '.svg': 'image/svg+xml',
 };
 
 const LOCALE_ALIASES = {
@@ -140,10 +141,6 @@ function buildUrl(host, scheme, port, requestPath = '/') {
 
 function buildCockpitUrl(host) {
   return buildUrl(host, 'https', 443, '/');
-}
-
-function buildWebUiUrl(host) {
-  return buildUrl(host, 'https', 443, '/webui');
 }
 
 function normalizeLocale(locale) {
@@ -255,8 +252,6 @@ function validatePayload(payload) {
 
   if (!password) {
     errors.password = 'Choose a password.';
-  } else if (password.length < 8) {
-    errors.password = 'Use at least 8 characters.';
   }
 
   if (confirmPassword !== password) {
@@ -288,7 +283,7 @@ function applyOnboarding(payload) {
     password: payload.password || '',
     confirmPassword: payload.confirmPassword || '',
     deviceName: payload.deviceName || '',
-    grantAdmin: payload.grantAdmin !== false,
+    grantAdmin: true,
   };
 
   const result = runCommand([APPLY_HELPER], {
@@ -501,9 +496,7 @@ async function handleGet(request, response, parsedUrl) {
       activePort: 443,
       httpEntryUrl: buildUrl(requestHost, 'http', 80),
       httpsEntryUrl: buildUrl(requestHost, 'https', 443),
-      compatUrl: buildCockpitUrl(requestHost),
       cockpitUrl: buildCockpitUrl(requestHost),
-      webUiUrl: buildWebUiUrl(requestHost),
     });
     return;
   }

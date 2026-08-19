@@ -13,9 +13,9 @@ ConditionPathExists=!/var/lib/iot2050-firstboot-onboarding/complete
 
 [Service]
 Type=simple
-ExecStartPre=/bin/mkdir -p /var/lib/iot2050-firstboot-onboarding
+StateDirectory=iot2050-firstboot-onboarding
+StateDirectoryMode=0755
 ExecStart=/usr/bin/iot2050-firstboot-onboarding
-ExecStopPost=/usr/lib/iot2050/onboarding/iot2050-firstboot-finalize.sh
 Restart=on-failure
 RestartSec=2s
 WorkingDirectory=/usr/lib/iot2050/onboarding
