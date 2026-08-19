@@ -13,6 +13,7 @@ set -eu
 CERT_DIR=/etc/iot2050/web-gateway
 CERT_FILE="$CERT_DIR/tls.crt"
 KEY_FILE="$CERT_DIR/tls.key"
+SOURCE_FILE="$CERT_DIR/tls.source"
 HOST_NAME="$(hostname -f 2>/dev/null || hostname)"
 
 if [ -s "$CERT_FILE" ] && [ -s "$KEY_FILE" ]; then
@@ -20,6 +21,7 @@ if [ -s "$CERT_FILE" ] && [ -s "$KEY_FILE" ]; then
 fi
 
 mkdir -p "$CERT_DIR"
+rm -f "$SOURCE_FILE"
 
 SAN="DNS:localhost,IP:127.0.0.1"
 
