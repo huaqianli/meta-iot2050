@@ -12,6 +12,7 @@ run_optional() {
 }
 
 run_optional systemctl daemon-reload
+run_optional /usr/lib/iot2050/web-gateway/iot2050-web-gateway-select-mode onboarding --no-reload
 run_optional systemctl disable cockpit.socket
 run_optional systemctl stop cockpit.socket
 run_optional systemctl enable iot2050-firstboot-onboarding.service
