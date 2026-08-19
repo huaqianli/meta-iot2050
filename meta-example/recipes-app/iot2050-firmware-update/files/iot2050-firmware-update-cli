@@ -1,0 +1,17 @@
+#!/usr/bin/env python3
+#
+# Copyright (c) Siemens AG, 2026
+#
+# SPDX-License-Identifier: MIT
+#
+# This small wrapper keeps /usr/sbin/iot2050-firmware-update as the stable
+# user-facing CLI while the generated module provides reusable firmware
+# operations for the Firmware Manager.
+
+import sys
+
+from iot2050_firmware_update import main
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
