@@ -4,6 +4,10 @@ This note captures the current IOT2050 first-boot onboarding control flow and
 the handoff from the temporary onboarding service to the nginx-fronted Cockpit
 runtime.
 
+In the current Example image security model, onboarding is the mechanism that creates
+the first named administrator. It does not provision a reusable default `root`
+password, does not unlock `root`, and does not enable direct root SSH login.
+
 For the broader design covering all current implementations under
 [meta-example/recipes-webui](../meta-example/recipes-webui), see
 [doc/recipes-webui.md](recipes-webui.md).
@@ -87,7 +91,8 @@ The flow covers:
 3. The frontend loads status information and collects hostname and user input.
 4. The backend validates the payload and invokes the apply helper.
 5. The helper updates the hostname, creates the non-root account, and stores a
-   request snapshot.
+  first administrator account in the available `sudo`, `adm`, and `dialout`
+  groups.
 6. The backend enables and starts Cockpit, then waits until the login endpoint
    responds.
 7. After Cockpit is ready, the backend switches nginx into runtime mode,
@@ -99,8 +104,18 @@ The flow covers:
 
 - `/var/lib/iot2050-firstboot-onboarding/complete`
   Marks onboarding as finished and prevents the service from starting again.
-- `/var/lib/iot2050-firstboot-onboarding/last-request.json`
-  Stores the last apply attempt and result for diagnostics.
+
+## Authentication Notes
+
+- Example images create a named administrator during onboarding and keep the
+  `root` password locked.
+- Example images rely on the login-security package for the current
+  password-authentication security baseline.
+- Password complexity is enforced by system PAM policy during `chpasswd`.
+  The onboarding page provides generic guidance and local password confirmation
+  checks, while PAM performs the final acceptance/rejection.
+- Development compatibility images created with `:kas/opt/dev.yml` are outside
+  the Example image security defaults and re-enable legacy root workflows explicitly.
 
 ## Related Implementation
 
