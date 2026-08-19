@@ -1,0 +1,9 @@
+Name: IOT2050 failed login lockout post-authentication
+Default: yes
+Priority: 128
+Auth-Type: Primary
+Auth:
+	[default=die]	pam_faillock.so authfail
+Account-Type: Primary
+Account:
+	required	pam_faillock.so
