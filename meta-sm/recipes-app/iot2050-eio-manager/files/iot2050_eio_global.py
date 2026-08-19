@@ -14,6 +14,9 @@ default_conf = {
     # IOT2050 Extended IO API server port
     'EIO_API_SERVER_PORT': '5020',
 
+    # Root-only Unix socket used to authenticate local EIO API clients.
+    'EIO_API_SERVER_SOCKET': '/run/iot2050/eio.sock',
+
     # Loopback-only HTTP bridge used by the static Cockpit WebUI.
     'EIO_WEBUI_API_SERVER_HOSTNAME': '127.0.0.1',
     'EIO_WEBUI_API_SERVER_PORT': '5021',
@@ -56,6 +59,7 @@ effective_conf = {
 
 EIO_API_SERVER_HOSTNAME = effective_conf['EIO_API_SERVER_HOSTNAME']
 EIO_API_SERVER_PORT = effective_conf['EIO_API_SERVER_PORT']
+EIO_API_SERVER_SOCKET = effective_conf['EIO_API_SERVER_SOCKET']
 EIO_WEBUI_API_SERVER_HOSTNAME = effective_conf['EIO_WEBUI_API_SERVER_HOSTNAME']
 EIO_WEBUI_API_SERVER_PORT = effective_conf['EIO_WEBUI_API_SERVER_PORT']
 EIO_TIME_SYNC_INTERVAL =  effective_conf['EIO_TIME_SYNC_INTERVAL']
@@ -93,7 +97,9 @@ eio_conf_templates = [
     f"{EIO_CONFIG_TEMP_ROOT}/mlfb-NA.yaml"
 ]
 
-iot2050_eio_api_server = f"{EIO_API_SERVER_HOSTNAME}:{EIO_API_SERVER_PORT}"
+iot2050_eio_api_server = effective_conf.get('EIO_API_SERVER') or (
+    f"unix://{EIO_API_SERVER_SOCKET}"
+)
 iot2050_eio_webui_api_server = (
     f"{EIO_WEBUI_API_SERVER_HOSTNAME}:{EIO_WEBUI_API_SERVER_PORT}"
 )

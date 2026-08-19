@@ -20,5 +20,8 @@ EIO_API_SERVER_HOSTNAME = 'localhost'
 # IOT2050 Extended IO API server port
 EIO_API_SERVER_PORT = '5020'
 
+# Root-only Unix socket used to authenticate local EIO API clients
+EIO_API_SERVER_SOCKET = '/run/iot2050/eio.sock'
+
 iot2050_event_api_server = f"{EVENT_API_SERVER_HOSTNAME}:{EVENT_API_SERVER_PORT}"
-iot2050_eio_api_server = f"{EIO_API_SERVER_HOSTNAME}:{EIO_API_SERVER_PORT}"
+iot2050_eio_api_server = f"unix://{EIO_API_SERVER_SOCKET}"
