@@ -44,6 +44,7 @@ if prompt wording evolves.
 | Node-RED support | `kas/opt/node-red.yml` | Adds meta-node-red packages | Minimal variant toggle; implicit in Example/SWUpdate |
 | SM variant support | `kas/opt/sm.yml` | SM hardware variant (sensors/EIO) | Minimal variant toggle; implicit in Example/SWUpdate |
 | Example demo content | `kas/opt/example.yml` | Demo apps and configs from example image | Minimal variant toggle; implicit in Example/SWUpdate |
+| Dev compatibility (local use) | `kas/opt/dev.yml` | Restores legacy `root`/`iot2050` credentials and root SSH compatibility for development | Manual local append only; not included in CI pipeline |
 | Docker support | `kas/opt/docker.yml` | Docker engine/tooling | All images |
 | LXDE graphical UI | `kas/opt/lxde.yml` | Lightweight desktop | All images |
 | Meta-Hailo AI card support | `kas/opt/hailo.yml` | Hailo driver & runtime | All (board HW required) |
@@ -78,6 +79,7 @@ The syntax follows this pattern:
 | Purpose | Chain | Outputs | Notes |
 |---------|-------|---------|-------|
 | Full example | `kas-iot2050-example.yml` | .wic | demos + Node-RED + SM bundled |
+| Dev compatibility local build | `kas-iot2050-example.yml:kas/opt/dev.yml` | .wic | local developer convenience; not a release or CI target |
 | SWUpdate A/B | `kas-iot2050-swupdate.yml` | .wic + .swu | dual rootfs update |
 | Minimal BSP | `kas/iot2050.yml` | .wic | lean EFI base |
 | Minimal parity (example) | `kas/iot2050.yml:kas/opt/example.yml:kas/opt/node-red.yml:kas/opt/sm.yml` | .wic | matches example image |
@@ -98,9 +100,31 @@ The syntax follows this pattern:
 - `kas-iot2050-fwu-package.yml`: Field firmware update bundle.
 - `kas-iot2050-qemu.yml`: Emulation add-on (always chained).
 
+### Authentication Profiles
+- Example image (`kas-iot2050-example.yml`): no preset `root` password, first-boot
+  onboarding creates the named administrator, root password is locked, and
+  direct root SSH is disabled.
+- Dev compatibility (`kas-iot2050-example.yml:kas/opt/dev.yml`): restores the
+  legacy `root` and `iot2050` credentials with forced password change and
+  re-enables direct root SSH for local development workflows.
+- Both image profiles currently ship the same password-authentication security defaults:
+  `deny=5`, `fail_interval=900`, `unlock_time=900`, `even_deny_root`, and
+  `root_unlock_time=900`.
+
 ### Security, Provisioning & Reproducibility
 **Demo Keys Warning**: `secure-boot.yml` ships with **DEMONSTRATION** keys.
 These **MUST** be replaced before any production use.
+
+**Release boundary**:
+- `kas/opt/dev.yml` is an explicit development compatibility fragment. It is
+  not part of Product or release build chains.
+- Release automation should select a Product descriptor directly and must not
+  append `kas/opt/dev.yml`.
+
+**Runtime failed-login operations**:
+- The login-security baseline relies on PAM `faillock` and `pwquality`.
+- Use `sudo faillock --user <user>` to inspect counters.
+- Use `sudo faillock --user <user> --reset` to clear a named user's lockout.
 
 Provisioning fragments (`otpcmd/*`) trigger irreversible OTP hardware fuse
 burns. Include exactly one and only when intentionally programming the device.

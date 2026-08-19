@@ -4,15 +4,17 @@ This document describes all current implementations under
 `meta-example/recipes-webui` and how they work together at runtime.
 
 This directory does not contain the SM Extended IO management UI. That runtime
-management UI now lives in `meta-sm/recipes-app/iot2050-eio-webui` as a
+management UI now lives in `meta-sm/recipes-app/iot2050-cockpit-eio-config` as a
 Cockpit plugin.
 
-As of the current tree, this directory contains two recipe groups:
+As of the current tree, this directory contains four recipe groups:
 
 | Recipe | Output package | Purpose |
 | ------ | -------------- | ------- |
 | [meta-example/recipes-webui/iot2050-firstboot-onboarding](../meta-example/recipes-webui/iot2050-firstboot-onboarding) | `iot2050-firstboot-onboarding` | First-boot onboarding backend, frontend, and system integration logic |
-| [meta-example/recipes-webui/iot2050-web-gateway-nginx](../meta-example/recipes-webui/iot2050-web-gateway-nginx) | `iot2050-web-gateway-nginx` | Public nginx HTTPS gateway in front of onboarding and Cockpit |
+| [meta-example/recipes-webui/iot2050-web-gateway-nginx](../meta-example/recipes-webui/iot2050-web-gateway-nginx) | `iot2050-web-gateway-nginx` | Public nginx HTTPS gateway in front of onboarding and Cockpit; `/oss` downloads the image-bundled OSS Clearing archive |
+| [meta-example/recipes-webui/iot2050-cockpit-device-admin](../meta-example/recipes-webui/iot2050-cockpit-device-admin) | `iot2050-cockpit-device-admin` | Device Admin Cockpit page for HTTPS certificate management |
+| [meta-example/recipes-webui/iot2050-cockpit-firmware](../meta-example/recipes-webui/iot2050-cockpit-firmware) | `iot2050-cockpit-firmware` | Firmware Center Cockpit page |
 
 ## Why These Recipes Exist
 
@@ -24,6 +26,8 @@ management interface.
 - Cockpit remains loopback-only and is exposed externally only through nginx.
 - Post-login management plugins such as Extended IO are provided by Cockpit
   packages, not by additional public reverse-proxy paths.
+- Device administration actions with a root privilege boundary are exposed as
+  fixed-operation Cockpit plugins rather than new nginx HTTP APIs.
 
 This gives the image one public HTTPS entrypoint while still allowing the
 system to present different behavior before and after initial provisioning.
@@ -89,8 +93,6 @@ Persistent state:
 - `/var/lib/iot2050-firstboot-onboarding/complete`
   Marks onboarding as finished. Its presence also prevents the service from
   starting again because the systemd unit uses `ConditionPathExists=!...`.
-- `/var/lib/iot2050-firstboot-onboarding/last-request.json`
-  Stores the last apply attempt and its result.
 
 ## Onboarding Logic Flow
 
@@ -160,6 +162,25 @@ Without that combination, nginx would terminate TLS correctly, but Cockpit can
 still fail after login because the websocket/origin path would not match the
 proxied HTTPS deployment model.
 
+## Device Admin plugin
+
+The `iot2050-cockpit-device-admin` package adds a **Device Admin** Cockpit page.
+It keeps both new operations inside the authenticated Cockpit session:
+
+- HTTPS certificate installation sends a PEM certificate/full chain and an
+  matching unencrypted PEM private key. The certificate already contains the
+  public key, and should include the hostname or IP address used to access the
+  device. A CA-trusted certificate is needed to avoid browser `Not secure`
+  warnings.
+## Web Gateway package
+
+The `iot2050-web-gateway-nginx` package owns the image-bundled OSS Clearing
+archive. It reads exactly one current archive from
+`/usr/share/iot2050/oss-clearing/` and exposes it at the stable `/oss` HTTPS
+URL during both onboarding and normal Cockpit operation. The download keeps the
+official versioned filename `V<version>-ReadmeOSS-All_in_One.zip` and never
+fetches from the external support URL at runtime.
+
 ## Integration Sequence
 
 Boot-time behavior:
@@ -189,5 +210,6 @@ Successful onboarding handoff:
 - If Cockpit login works but the post-login page fails behind nginx, verify the
   `cockpit-wsinstance-http.service.d/for-tls-proxy.conf` override is present.
 - The current implementation under `meta-example/recipes-webui` documents
-  onboarding and Cockpit only. If new proxied applications are added later,
-  extend the runtime-mode section instead of bypassing the gateway.
+  onboarding, Cockpit, system administration, and firmware pages. If new
+  proxied applications are added later, extend the runtime-mode section
+  instead of bypassing the gateway.

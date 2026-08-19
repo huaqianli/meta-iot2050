@@ -5,8 +5,8 @@
 > `iot2050-firmware-update`, and adapt/restore the U-Boot environment as needed.
 
 ## Flashing Images
-There are two primary methods for flashing the `.wic` image file to an SD card or
-other storages.
+There are two primary methods for flashing the `.wic` image file to an SD card
+or other storage.
 
 ### Using `bmaptool` (Recommended)
 For the fastest and safest flashing, use `bmaptool`. This tool provides
@@ -28,9 +28,52 @@ sudo dd if=<image>.wic of=/dev/mmcblk0 bs=4M oflag=sync status=progress
 - **Base BSP image**: no network preconfigured (must be configured manually
   via the UART console).
 
-**Credentials (default)**: user `root` (no separate password-protected user);
-you will be prompted to change the password on first login. This should be
-done immediately for any network-connected deployment.
+## Login Security Operations
+
+**Credentials (Example image default)**: no preset `root` password is shipped.
+First-boot onboarding creates the named administrator account, while the root
+password remains locked and direct root SSH login is disabled.
+
+**Development compatibility**: when explicitly built with
+`kas-iot2050-example.yml:kas/opt/dev.yml`, the image restores legacy `root`
+and `iot2050` credentials with forced password change and direct root SSH for
+local development workflows.
+
+The Dev SSH compatibility package installs a `00-iot2050-dev-root-ssh.conf`
+drop-in. Its earlier filename makes `PermitRootLogin yes` take effect before
+the Product security drop-in's `PermitRootLogin no`, while the Product `UsePAM`
+and `MaxAuthTries` settings remain active. This is intentionally limited to the
+explicit Dev append and is not present in Example images.
+
+**Failed-login security baseline**: password-based authentication currently
+ships with `deny=5`, `fail_interval=900`, `unlock_time=900`,
+`even_deny_root`, and `root_unlock_time=900`. An administrator can clear a
+lockout by resetting the failed-attempt state on the device.
+
+Failed-login counters are stored under `/var/lib/faillock` so they survive
+service restart and reboot.
+
+Named-account passwords use the system `pam_pwquality` policy. The baseline
+requires at least 12 characters and at least 3 of 4 character classes
+(lowercase, uppercase, digits, and symbols), and rejects long repeated runs
+and simple numeric sequences. This policy is applied by PAM so
+it covers the onboarding `chpasswd` path, interactive `passwd`, and the
+local password-update path consistently. The image also installs
+the CrackLib runtime and an explicit wordlist so dictionary checks work during
+password changes.
+
+To inspect or clear the failed-login state of a named account on the device,
+use the standard `faillock` tooling:
+```sh
+sudo faillock --user <user>
+sudo faillock --user <user> --reset
+```
+
+For account lifecycle operations (status, disable, enable, delete), use the
+Cockpit Accounts page as the primary interface.
+
+Use Cockpit and direct `faillock` commands for targeted lifecycle and lockout
+operations on the device.
 
 ## eMMC Installation
 This installation flow is provided by the example image. It is not available

@@ -9,7 +9,7 @@ follow these boundaries unless a design change is explicitly documented.
 
 The IOT2050 Cockpit integration should:
 
-- keep each feature independently installable, testable, and reviewable;
+- keep each feature independently installable and reviewable;
 - use Cockpit's standard package and manifest model;
 - keep privileged operations behind a small, fixed backend boundary;
 - avoid adding unnecessary public HTTP or nginx APIs;
@@ -23,15 +23,15 @@ The current self-developed integrations are separate Cockpit packages:
 
 | Feature | Layer and package | Cockpit ID | Navigation | Availability | Backend boundary |
 | --- | --- | --- | --- | --- | --- |
-| Firmware | `meta-example`, `iot2050-firmware-webui` | `iot2050-firmware` | System | All supported images | `iot2050-firmware-manager` and its root-only Unix socket |
-| EIO Config | `meta-sm`, `iot2050-eio-webui` | `iot2050-eio-config` | System | SM board condition | EIO configuration bridge on the loopback interface |
-| Device Admin | `meta-example`, `iot2050-device-admin-webui` | `iot2050-device-admin` | System | All supported images | Fixed-operation `iot2050-device-admin` helper |
+| Firmware | `meta-example`, `iot2050-cockpit-firmware` | `iot2050-firmware` | System | All supported images | `iot2050-firmware-manager` and its root-only Unix socket |
+| EIO Config | `meta-sm`, `iot2050-cockpit-eio-config` | `iot2050-eio-config` | System | SM board condition | EIO configuration bridge on the loopback interface |
+| Device Admin | `meta-example`, `iot2050-cockpit-device-admin` | `iot2050-device-admin` | System | All supported images | Fixed-operation `iot2050-device-admin` helper |
 
 The corresponding implementation and feature documentation are:
 
 - [Firmware Center](firmware-center.md)
 - [Device Admin](iot2050-device-admin.md)
-- [EIO WebUI README](../meta-sm/recipes-app/iot2050-eio-webui/README.md)
+- [EIO Config Cockpit README](../meta-sm/recipes-app/iot2050-cockpit-eio-config/README.md)
 - [Web UI recipe overview](recipes-webui.md)
 
 The current navigation is intentionally flat within Cockpit's standard
@@ -126,8 +126,9 @@ Examples:
 
 - Firmware uses the firmware manager and persistent task model.
 - EIO Config uses its existing configuration bridge.
-- Device Admin uses fixed operations for certificate installation and OSS
-  Clearing download.
+- Device Admin uses fixed certificate-installation operations.
+- The Web Gateway exposes the image-bundled OSS Clearing archive through the
+  fixed `/oss` URL.
 
 Do not add a new public nginx route merely to connect a Cockpit page to a
 privileged operation. Do not pass arbitrary command names, filesystem paths, or
@@ -142,7 +143,6 @@ Each new Cockpit feature should provide the following:
   availability conditions where needed;
 - a page directory with local static assets and a clear entrypoint;
 - a fixed backend boundary for privileged operations;
-- a feature-specific test contract;
 - a short feature document describing user-visible behavior and operational
   requirements;
 - image integration only in the image variants that support the feature.

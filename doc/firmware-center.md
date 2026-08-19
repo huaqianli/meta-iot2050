@@ -57,6 +57,14 @@ permission, provider, staging, task, locking, and error-handling rules. The
 selected provider then invokes the domain-specific firmware backend. The
 result follows the same path back to the Cockpit page.
 
+The page shows the device identity as `Name`, `MLFB`, and `SN`. System Firmware
+also shows the OS image version, current firmware version, and expected package
+version. Firmware versions are normalized to the `V...` label; a build prefix
+such as `2026.07-` is not shown. System Firmware and EIO controller cards show
+`Matched` or `Unmatched` by comparing the current and expected versions. The
+Module Firmware card is hidden when no scanned slot has a valid `fwa` or `fwb`
+node.
+
 This common path is intentional: System Firmware, EIO controller firmware,
 and EIO module firmware have different flashing implementations, but share
 the same local privilege boundary, operation lifecycle, runtime availability
@@ -202,11 +210,9 @@ When adding a provider:
 3. Consume staging tokens rather than caller paths.
 4. Return stable `ManagerError` codes and avoid exposing tracebacks or private
    paths through IPC.
-5. Add host-side contract tests and verify the resulting Debian package.
-
-The host-side test suite is under `tests/firmware_center`. Recipe metadata and
-package builds should be run through `kas-container` so `/repo` and Isar paths
-match the supported build environment.
+5. Verify the resulting Debian package. Recipe metadata and package builds
+  should be run through `kas-container` so `/repo` and Isar paths match the
+  supported build environment.
 
 Hardware writes require separate on-device validation. In particular, test
 power-loss handling, backup readability, flash readback, EIOFS readiness, and
