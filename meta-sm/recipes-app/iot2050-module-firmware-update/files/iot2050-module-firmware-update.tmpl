@@ -9,6 +9,7 @@
 
 import sys
 import argparse
+import json
 import textwrap
 
 from iot2050_module_firmware_update import (
@@ -44,28 +45,70 @@ def main(args):
         help="Path to firmware B file",
         type=argparse.FileType('rb')
     )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args(args)
 
     if not args.firmware_a and not args.firmware_b:
-        print("Error: No firmware file specified")
-        parser.print_help()
+        if args.json:
+            print(json.dumps({
+                "ok": False,
+                "error": {
+                    "code": "missing-firmware",
+                    "message": "No firmware file specified",
+                },
+            }, separators=(",", ":")))
+        else:
+            print("Error: No firmware file specified")
+            parser.print_help()
         return 1
 
     try:
-        update_module_firmware(
+        results = update_module_firmware(
             args.slot,
             args.firmware_a,
             args.firmware_b,
-            on_chip_start=lambda chip: print(f"Updating firmware {chip} ..."),
+            on_chip_start=(
+                None if args.json
+                else lambda chip: print(f"Updating firmware {chip} ...")
+            ),
         )
     except FirmwareOperationBusy as e:
-        print(f"Error: {e}")
+        if args.json:
+            print(json.dumps({
+                "ok": False,
+                "error": {"code": "firmware-busy", "message": str(e)},
+            }, separators=(",", ":")))
+        else:
+            print(f"Error: {e}")
         return 1
     except ModuleFirmwareUpdateError as e:
-        print(f"Error: Failed to write firmware {e.chip}, {e.error}")
+        if args.json:
+            print(json.dumps({
+                "ok": False,
+                "error": {
+                    "code": "module-update-failed",
+                    "chip": e.chip,
+                    "message": str(e.error),
+                    "results": e.results,
+                },
+            }, separators=(",", ":")))
+        else:
+            print(f"Error: Failed to write firmware {e.chip}, {e.error}")
         return 1
 
-    print("Firmware updated successfully. Please reboot the upgraded module.")
+    if args.json:
+        print(json.dumps({
+            "ok": True,
+            "slot": args.slot,
+            "chips": results,
+            "reboot_required": True,
+        }, separators=(",", ":")))
+    else:
+        print("Firmware updated successfully. Please reboot the upgraded module.")
 
     return 0
 

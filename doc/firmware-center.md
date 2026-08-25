@@ -13,6 +13,7 @@ but not package formats or flashing logic.
 | Local client | `/usr/sbin/iot2050-fwmgr` | JSON command adapter used by Cockpit with `superuser: require` |
 | Manager | `/usr/lib/iot2050/firmware-manager` | Provider discovery, staging, and task persistence |
 | Manager socket | `/run/iot2050/firmware-manager.sock` | Root-only, systemd-activated JSON Lines IPC |
+| System Firmware service | `/run/iot2050/system-firmware.sock` | Root-only gRPC service for System Firmware operations |
 | SM providers | `iot2050-firmware-provider-sm` | Controller and module adapters installed only with SM support |
 
 No HTTP firmware API or additional listening network port is introduced.
@@ -31,6 +32,7 @@ flowchart LR
     Handler[FirmwareRequestHandler]
     Manager[FirmwareManager]
     System[SystemFirmwareProvider]
+    SystemRPC[System Firmware gRPC<br/>Inspect / Update / Rollback]
     Controller[EIOControllerProvider]
     Module[ModuleFirmwareProvider]
     SystemBackend[iot2050_firmware_update<br/>OSPI / U-Boot]
@@ -45,7 +47,8 @@ flowchart LR
     Manager --> System
     Manager --> Controller
     Manager --> Module
-    System --> SystemBackend
+    System --> SystemRPC
+    SystemRPC --> SystemBackend
     Controller --> ControllerRPC
     Module --> ModuleBackend
 ```
@@ -54,8 +57,10 @@ The browser only calls the local `iot2050-fwmgr` client. The client serializes
 the operation as one JSON request per line. `FirmwareRequestHandler` decodes
 the request and passes it to `FirmwareManager`, which applies the common
 permission, provider, staging, task, locking, and error-handling rules. The
-selected provider then invokes the domain-specific firmware backend. The
-result follows the same path back to the Cockpit page.
+selected provider then invokes the domain-specific firmware backend. System
+Firmware uses its root-only gRPC service, while the SM controller provider uses
+the existing EIOManager service. The result follows the same path back to the
+Cockpit page.
 
 The page shows the device identity as `Name`, `MLFB`, and `SN`. System Firmware
 also shows the OS image version, current firmware version, and expected package
@@ -145,6 +150,8 @@ Managed System Firmware updates have stricter behavior than the legacy CLI:
   traversal, directories, symbolic links, hard links, and device nodes are
   rejected.
 - Member count and total extracted size are bounded.
+- System Firmware operations run in the root-owned service with `HOME=/root`,
+  so all clients use one process-owned rollback location.
 - CLI and manager use the same process-home backup file at
   `${HOME}/.rollback_fw/rollback_backup_fw.tar`. An explicit CLI
   `--backup-dir` remains a compatibility override.
