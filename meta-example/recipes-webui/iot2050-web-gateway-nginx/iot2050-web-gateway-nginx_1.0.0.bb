@@ -38,7 +38,7 @@ TEMPLATE_VARS += "OSS_ARCHIVE"
 
 DESCRIPTION = "IOT2050 nginx web gateway for onboarding and Cockpit"
 
-DEBIAN_DEPENDS = "cockpit, nginx, openssl, systemd, iot2050-firewall-default"
+DEBIAN_DEPENDS = "cockpit, nginx, python3-cryptography, python3-psutil, systemd, iot2050-firewall-default"
 
 # Keep these two Cockpit overrides together: cockpit.service stays on loopback
 # plain HTTP for nginx TLS termination, while cockpit-wsinstance-http is put
@@ -55,7 +55,7 @@ SRC_URI = " \
     file://iot2050-web-gateway-proxy-common.conf \
     file://iot2050-web-gateway-onboarding.conf \
     file://iot2050-web-gateway-runtime.conf \
-    file://iot2050-web-gateway-ensure-cert.sh \
+    file://iot2050-web-gateway-ensure-cert.py \
     file://iot2050-web-gateway-prepare.sh \
     file://iot2050-web-gateway-select-mode \
     file://postinst \
@@ -79,7 +79,7 @@ do_install() {
     install -m 644 ${WORKDIR}/nginx.service.d/iot2050-web-gateway.conf ${D}/etc/systemd/system/nginx.service.d/
 
     install -d -m 755 ${D}/usr/lib/iot2050/web-gateway/nginx
-    install -m 755 ${WORKDIR}/iot2050-web-gateway-ensure-cert.sh ${D}/usr/lib/iot2050/web-gateway/
+    install -m 755 ${WORKDIR}/iot2050-web-gateway-ensure-cert.py ${D}/usr/lib/iot2050/web-gateway/
     install -m 755 ${WORKDIR}/iot2050-web-gateway-prepare.sh ${D}/usr/lib/iot2050/web-gateway/
     install -m 755 ${WORKDIR}/iot2050-web-gateway-select-mode ${D}/usr/lib/iot2050/web-gateway/
     install -m 644 ${WORKDIR}/iot2050-web-gateway-onboarding.conf ${D}/usr/lib/iot2050/web-gateway/nginx/onboarding.conf

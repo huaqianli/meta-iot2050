@@ -118,13 +118,13 @@ manager or fixed-operation service boundary:
 Cockpit page
     -> authenticated Cockpit client
     -> fixed local client or root-only Unix socket
-    -> manager/provider
+    -> fwmgr/provider
     -> hardware or system service
 ```
 
 Examples:
 
-- Firmware uses the firmware manager and persistent task model.
+- Firmware uses fwmgr and its persistent task model.
 - EIO Config uses its existing configuration bridge.
 - Device Admin uses fixed certificate-installation operations.
 - The Web Gateway exposes the image-bundled OSS Clearing archive through the

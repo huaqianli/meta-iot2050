@@ -11,7 +11,7 @@ inherit dpkg-raw
 DEPENDS = "iot2050-firmware-update"
 
 SRC_URI = " \
-    file://iot2050_firmware_manager.py \
+    file://iot2050_fwmgr.py \
     file://iot2050-fwmgr \
     file://iot2050-firmware-task@.service \
     file://iot2050-firmware-staging-gc.service \
@@ -21,10 +21,12 @@ SRC_URI = " \
     "
 
 DEBIAN_DEPENDS = "python3, systemd, iot2050-firmware-update"
+DEBIAN_CONFLICTS = "iot2050-firmware-manager"
+DEBIAN_REPLACES = "iot2050-firmware-manager"
 
 do_install() {
     install -v -d ${D}/usr/lib/python3/dist-packages/
-    install -v -m 644 ${WORKDIR}/iot2050_firmware_manager.py \
+    install -v -m 644 ${WORKDIR}/iot2050_fwmgr.py \
         ${D}/usr/lib/python3/dist-packages/
 
     install -v -d ${D}/usr/sbin/

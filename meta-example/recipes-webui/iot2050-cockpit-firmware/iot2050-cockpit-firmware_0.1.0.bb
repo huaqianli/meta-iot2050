@@ -8,7 +8,7 @@ MAINTAINER = "Siemens AG"
 
 inherit dpkg-raw
 
-DEPENDS = "iot2050-firmware-manager"
+DEPENDS = "iot2050-fwmgr"
 
 SRC_URI = " \
     file://manifest.json \
@@ -17,7 +17,7 @@ SRC_URI = " \
     file://firmware.js \
     "
 
-DEBIAN_DEPENDS = "cockpit, iot2050-firmware-manager"
+DEBIAN_DEPENDS = "cockpit, iot2050-fwmgr"
 
 do_install() {
     install -v -d ${D}/usr/share/cockpit/iot2050-firmware/

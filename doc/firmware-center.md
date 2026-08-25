@@ -13,6 +13,7 @@ but not package formats or flashing logic.
 | Backend | `/usr/sbin/iot2050-fwmgr` | Fixed operation dispatch, provider discovery, staging, and task persistence |
 | Task worker | `iot2050-firmware-task@.service` | Runs one persistent firmware task outside the Cockpit request process |
 | System Firmware service | `/run/iot2050/system-firmware.sock` | Root-only gRPC service for System Firmware operations |
+| Module Firmware service | `/run/iot2050/module-firmware.sock` | Root-only gRPC service for EIO module operations |
 | SM providers | `iot2050-firmware-provider-sm` | Controller and module adapters installed only with SM support |
 
 No HTTP firmware API or additional listening network port is introduced.
@@ -35,7 +36,8 @@ flowchart LR
     Module[ModuleFirmwareProvider]
     SystemBackend[iot2050_firmware_update<br/>OSPI / U-Boot]
     ControllerRPC[EIOManager gRPC<br/>CheckFWU / UpdateFirmware]
-    ModuleBackend[iot2050-module-firmware-update CLI<br/>EIOFS slotN/fwa and slotN/fwb]
+    ModuleRPC[Module Firmware gRPC<br/>slot / chip A / chip B]
+    ModuleBackend[iot2050-module-firmware-update<br/>EIOFS slotN/fwa and slotN/fwb]
 
     UI -->|cockpit.spawn<br/>superuser: require| CLI
     CLI --> Backend
@@ -47,7 +49,8 @@ flowchart LR
     System --> SystemRPC
     SystemRPC --> SystemBackend
     Controller --> ControllerRPC
-    Module --> ModuleBackend
+    Module --> ModuleRPC
+    ModuleRPC --> ModuleBackend
 ```
 
 The browser only calls the local `iot2050-fwmgr` backend. The backend validates
@@ -66,18 +69,28 @@ such as `2026.07-` is not shown. System Firmware and EIO controller cards show
 Module Firmware card is hidden when no scanned slot has a valid `fwa` or `fwb`
 node.
 
+Both domain-specific write services expose `StartUpdate` and `GetOperation`;
+System Firmware also exposes `StartRollback`. These RPCs make long-running
+hardware writes non-blocking for callers. Operation records are stored under
+service-owned state directories, and running records are marked interrupted
+after a service restart. The outer `fwmgr` task remains the durable recovery
+and user-facing record.
+
 This common path is intentional: System Firmware, EIO controller firmware,
 and EIO module firmware have different flashing implementations, but share
 the same local privilege boundary, operation lifecycle, runtime availability
 checks, progress reporting, and user-facing result format.
 
 EIO Controller inspection and updates use the existing EIOManager gRPC service.
-The legacy `CheckFWU` status values remain unchanged, while its message carries
-the structured inspection result required by the Firmware Center. Module
-Firmware continues to use its existing backend because the current EIO gRPC
-contract does not represent module slots and chip A/B results.
-Module updates use the existing fixed module firmware CLI with machine-readable
-output; the CLI and its backend share the EIO resource lock.
+The legacy `CheckFWU` status values and JSON message remain unchanged for old
+clients. New clients use its typed `inspection` field for the structured
+controller result required by the Firmware Center. Module
+Firmware uses a dedicated local gRPC service because the existing EIOManager
+contract does not represent module slots and chip A/B results. The service
+passes firmware bytes to the existing module update backend and returns
+per-chip results, including partial completion. The legacy fixed module
+firmware CLI remains available for compatibility and uses the same backend and
+EIO resource lock.
 
 ## Runtime model
 
@@ -86,7 +99,7 @@ The currently supported operations are:
 
 - `capabilities.list`: list providers supported by this hardware and their
   current runtime availability.
-- `staging.import`: copy a local file into private manager storage and return a
+- `staging.import`: copy a local file into private fwmgr storage and return a
   token, size, name, and SHA-256 digest.
 - `inspect.get`: perform provider-specific checks without writing hardware.
 - `action.start`: start one persistent hardware task.
@@ -109,7 +122,7 @@ Firmware provider.
 SM providers remain visible on an SM device when EIOFS is unavailable. In that
 case the Firmware Center displays the provider's availability reason and
 disables its inspection, upload, and update controls. Provider availability is
-checked again by the manager before every inspection or hardware operation.
+checked again by fwmgr before every inspection or hardware operation.
 
 When EIOFS is available, the Module provider scans slots `1..6` at runtime and
 reports the slots and `fwa`/`fwb` nodes that actually exist. The Firmware
@@ -149,9 +162,12 @@ Managed System Firmware updates have stricter behavior than the legacy CLI:
 - Member count and total extracted size are bounded.
 - System Firmware operations run in the root-owned service with `HOME=/root`,
   so all clients use one process-owned rollback location.
+- Managed gRPC requests cannot select a backup path. They always use the
+  service-owned process-home backup identity.
 - CLI and backend use the same process-home backup file at
   `${HOME}/.rollback_fw/rollback_backup_fw.tar`. An explicit CLI
-  `--backup-dir` remains a compatibility override.
+  `--backup-dir` remains a compatibility override; explicit paths must be
+  absolute, root-owned, private directories with no symbolic-link component.
 - Web rollback uses that local backup and verifies its SHA-256 metadata before
   reusing the existing CLI rollback flashing semantics.
 - The managed path never prompts, retries a failed flash, or reboots.
@@ -166,12 +182,18 @@ Managed System Firmware updates have stricter behavior than the legacy CLI:
   failures therefore require keeping the device powered and following the
   provider-specific recovery procedure.
 
-The CLI remains backward compatible: `--verify` is still optional there, and
-its existing arguments and numeric return codes remain stable. New code must
+The CLI remains backward compatible: `--verify` is still optional there. When
+omitted, the legacy CLI permits packages without a signature; when supplied,
+the signature is required and verified. Managed Firmware Center requests
+always require signature verification. Existing arguments and numeric return
+codes remain stable. New code must
 not implement the Web path by calling the CLI `main()` because that would
 inherit interactive confirmation and blind retry behavior.
 
-The backend and its systemd task worker run as root. Product administrators use
+The backend and its systemd task worker run as root. The EIO gRPC service uses
+the root-only `/run/iot2050/eio.sock` Unix socket by default; its filesystem
+permissions authenticate local callers and the TCP endpoint is not exposed by
+the default configuration. Product administrators use
 Cockpit's `superuser: require` flow backed by their `sudo` membership; no
 direct firmware socket is exposed to product users.
 
@@ -208,7 +230,7 @@ hash before confirmation and the provider performs readback after flashing.
 ### Module
 
 Source: independently staged chip A and/or chip B images. Updates preserve the
-existing CLI order (A then B) and report per-chip outcomes. A successful A
+existing backend order (A then B) and report per-chip outcomes. A successful A
 write followed by a failed B write remains a partial update and must not be
 reported as an atomic rollback.
 
@@ -220,7 +242,7 @@ When adding a provider:
 2. Implement `available()`, `capabilities()`, and `inspect()`; add `start()` only
    when writing is supported.
 3. Consume staging tokens rather than caller paths.
-4. Return stable `ManagerError` codes and avoid exposing tracebacks or private
+4. Return stable firmware error codes and avoid exposing tracebacks or private
    paths through IPC.
 5. Verify the resulting Debian package. Recipe metadata and package builds
   should be run through `kas-container` so `/repo` and Isar paths match the

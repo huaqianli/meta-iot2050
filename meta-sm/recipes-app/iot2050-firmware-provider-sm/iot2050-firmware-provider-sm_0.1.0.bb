@@ -3,12 +3,12 @@
 
 PR = "1"
 
-DESCRIPTION = "SM firmware providers for the IOT2050 firmware manager"
+DESCRIPTION = "SM firmware providers for the IOT2050 firmware task core"
 MAINTAINER = "Siemens AG"
 
 inherit dpkg-raw
 
-DEPENDS = "iot2050-firmware-manager iot2050-eio-manager iot2050-eiofsd iot2050-module-firmware-update"
+DEPENDS = "iot2050-fwmgr iot2050-eio-manager iot2050-eiofsd iot2050-module-firmware-update"
 
 SRC_URI = " \
     file://iot2050_firmware_provider_sm.py \
@@ -16,16 +16,16 @@ SRC_URI = " \
     file://30-module.json \
     "
 
-DEBIAN_DEPENDS = "iot2050-firmware-manager, iot2050-eio-manager, iot2050-eiofsd, iot2050-module-firmware-update"
+DEBIAN_DEPENDS = "iot2050-fwmgr, iot2050-eio-manager, iot2050-eiofsd, iot2050-module-firmware-update"
 
 do_install() {
-    install -v -d ${D}/usr/lib/iot2050/firmware-manager/
+    install -v -d ${D}/usr/lib/iot2050/fwmgr/
     install -v -m 644 ${WORKDIR}/iot2050_firmware_provider_sm.py \
-        ${D}/usr/lib/iot2050/firmware-manager/
+        ${D}/usr/lib/iot2050/fwmgr/
 
-    install -v -d ${D}/usr/lib/iot2050/firmware-manager/providers.d/
+    install -v -d ${D}/usr/lib/iot2050/fwmgr/providers.d/
     install -v -m 644 ${WORKDIR}/20-controller.json \
-        ${D}/usr/lib/iot2050/firmware-manager/providers.d/
+        ${D}/usr/lib/iot2050/fwmgr/providers.d/
     install -v -m 644 ${WORKDIR}/30-module.json \
-        ${D}/usr/lib/iot2050/firmware-manager/providers.d/
+        ${D}/usr/lib/iot2050/fwmgr/providers.d/
 }

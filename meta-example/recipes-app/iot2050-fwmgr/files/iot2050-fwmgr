@@ -3,23 +3,23 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Privileged local client for the IOT2050 firmware manager."""
+"""Privileged local client for the IOT2050 firmware task core."""
 
 import argparse
 import json
 import sys
 import uuid
 
-from iot2050_firmware_manager import (
-    FirmwareManager,
-    ManagerError,
+from iot2050_fwmgr import (
+    FirmwareError,
+    FirmwareTaskCore,
     ProviderRegistry,
 )
 
 def load_manager():
     registry = ProviderRegistry()
     registry.discover()
-    return FirmwareManager(registry)
+    return FirmwareTaskCore(registry)
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="IOT2050 firmware backend")
@@ -54,7 +54,7 @@ def main(argv=None):
     if args.operation == "worker":
         try:
             task = manager.execute_task(args.task_id)
-        except ManagerError as error:
+        except FirmwareError as error:
             print(error.message, file=sys.stderr)
             return 1
         return 0 if task.get("state") == "succeeded" else 1
@@ -93,7 +93,7 @@ def main(argv=None):
             if args.name:
                 request["payload"]["name"] = args.name
         response = manager.handle(request)
-    except (OSError, ValueError, ManagerError) as error:
+    except (OSError, ValueError, FirmwareError) as error:
         print(json.dumps({
             "v": 1,
             "id": None,

@@ -106,6 +106,14 @@ To apply a firmware update package from the running system:
 iot2050-firmware-update /usr/share/iot2050/fwu/IOT2050-FW-Update-PKG-<Version>.tar.xz
 ```
 
+The command is a compatibility client for the root-only System Firmware
+service. The Firmware Center uses `/usr/sbin/iot2050-fwmgr`, durable tasks,
+and systemd workers instead. Managed requests always use the service-owned
+`${HOME}/.rollback_fw/rollback_backup_fw.tar` identity and require a valid
+signature. The legacy `--verify` option remains optional for the command-line
+client; `--backup-dir` is accepted only as an explicit compatibility override
+for a private root-owned directory.
+
 ## Selecting Boot Device (Temporary Override)
 In the U-Boot serial console, you can temporarily change the boot device:
 ```

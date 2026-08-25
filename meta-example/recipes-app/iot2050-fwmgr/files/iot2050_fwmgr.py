@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Core protocol and provider registry for the IOT2050 firmware manager."""
+"""Core protocol and provider registry for the IOT2050 firmware task core."""
 
 import contextlib
 import fcntl
@@ -31,7 +31,7 @@ from iot2050_system_firmware_pb2_grpc import SystemFirmwareStub
 
 
 PROTOCOL_VERSION = 1
-DEFAULT_PROVIDER_DIR = "/usr/lib/iot2050/firmware-manager/providers.d"
+DEFAULT_PROVIDER_DIR = "/usr/lib/iot2050/fwmgr/providers.d"
 DEFAULT_TASK_DIR = "/var/lib/iot2050-fwmgr/tasks"
 DEFAULT_STAGING_DIR = "/var/lib/iot2050-fwmgr/staging"
 DEFAULT_FIRMWARE_DIR = "/usr/share/iot2050/fwu"
@@ -42,8 +42,8 @@ TASK_ADMISSION_LOCK = "/run/iot2050/firmware-task-admission.lock"
 TASK_UNIT = "iot2050-firmware-task@{}.service"
 
 
-class ManagerError(Exception):
-    """A stable error returned through the manager IPC."""
+class FirmwareError(Exception):
+    """A stable error returned through the firmware IPC."""
 
     def __init__(self, code, message, details=None):
         super().__init__(message)
@@ -94,11 +94,11 @@ class SystemFirmwareProvider:
     @staticmethod
     def _system_response(response):
         if not response.ok:
-            raise ManagerError(response.code, response.message)
+            raise FirmwareError(response.code, response.message)
         try:
             return json.loads(response.details_json) if response.details_json else {}
         except ValueError as error:
-            raise ManagerError(
+            raise FirmwareError(
                 "system-firmware-invalid-response",
                 "System Firmware service returned invalid response data",
             ) from error
@@ -111,18 +111,18 @@ class SystemFirmwareProvider:
                 OperationRequest(operation_id=operation_id), timeout=10)
             if response.state == "running":
                 if time.monotonic() >= deadline:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "system-update-timeout",
                         "System firmware update timed out",
                     )
                 time.sleep(1)
                 continue
             if not response.ok:
-                raise ManagerError(response.code, response.message)
+                raise FirmwareError(response.code, response.message)
             try:
                 return json.loads(response.details_json) if response.details_json else {}
             except ValueError as error:
-                raise ManagerError(
+                raise FirmwareError(
                     "system-firmware-invalid-response",
                     "System Firmware service returned invalid operation data",
                 ) from error
@@ -140,7 +140,7 @@ class SystemFirmwareProvider:
                 channel.close()
             details = self._system_response(response)
         except grpc.RpcError as error:
-            raise ManagerError(
+            raise FirmwareError(
                 "system-firmware-service-unavailable",
                 "System Firmware service is unavailable",
             ) from error
@@ -216,13 +216,13 @@ class SystemFirmwareProvider:
                     timeout=10,
                 )
                 if not response.ok:
-                    raise ManagerError(response.code, response.message)
+                    raise FirmwareError(response.code, response.message)
                 result = self._wait_system_operation(
                     stub, response.operation_id)
             finally:
                 channel.close()
         except grpc.RpcError as error:
-            raise ManagerError(
+            raise FirmwareError(
                 "system-firmware-service-unavailable",
                 "System Firmware service is unavailable",
             ) from error
@@ -237,7 +237,7 @@ class SystemFirmwareProvider:
                 channel.close()
             return self._system_response(response)
         except grpc.RpcError as error:
-            raise ManagerError(
+            raise FirmwareError(
                 "system-firmware-service-unavailable",
                 "System Firmware service is unavailable",
             ) from error
@@ -248,14 +248,14 @@ class SystemFirmwareProvider:
             try:
                 response = stub.StartRollback(RollbackRequest(), timeout=10)
                 if not response.ok:
-                    raise ManagerError(response.code, response.message)
+                    raise FirmwareError(response.code, response.message)
                 result = self._wait_system_operation(
                     stub, response.operation_id)
             finally:
                 channel.close()
             return result
         except grpc.RpcError as error:
-            raise ManagerError(
+            raise FirmwareError(
                 "system-firmware-service-unavailable",
                 "System Firmware service is unavailable",
             ) from error
@@ -264,7 +264,7 @@ class SystemFirmwareProvider:
         if request.get("source") == "image-default":
             package = self._default_package()
             if package is None:
-                raise ManagerError(
+                raise FirmwareError(
                     "default-firmware-unavailable",
                     "The image-default system firmware package is unavailable",
                 )
@@ -275,7 +275,7 @@ class SystemFirmwareProvider:
         store = staging_store or self.staging_store
         token = request.get("token")
         if store is None or not token:
-            raise ManagerError(
+            raise FirmwareError(
                 "staging-required", "A staged system firmware package is required")
         path, metadata = store.resolve(token)
         return path, {"source": "upload", **metadata}
@@ -286,7 +286,7 @@ class SystemFirmwareProvider:
         # stable numeric code needed by support and existing CLI documentation.
         code = getattr(error, "code", None)
         if code is None:
-            raise ManagerError(
+            raise FirmwareError(
                 "system-update-failed", "System firmware operation failed"
             ) from error
         messages = {
@@ -301,7 +301,7 @@ class SystemFirmwareProvider:
             message = str(error.err)
         else:
             message = messages.get(code, "System firmware operation was rejected")
-        raise ManagerError(
+        raise FirmwareError(
             "system-update-rejected",
             message,
             {"updater_code": code},
@@ -319,9 +319,9 @@ class ProviderRegistry:
     def register(self, provider):
         name = getattr(provider, "name", None)
         if not name or not isinstance(name, str):
-            raise ManagerError("invalid-provider", "Provider has no valid name")
+            raise FirmwareError("invalid-provider", "Provider has no valid name")
         if name in self.providers:
-            raise ManagerError(
+            raise FirmwareError(
                 "duplicate-provider", f"Provider '{name}' is already registered")
         self.providers[name] = provider
 
@@ -387,7 +387,7 @@ class ProviderRegistry:
     def get(self, name):
         provider = self.available_providers().get(name)
         if provider is None:
-            raise ManagerError(
+            raise FirmwareError(
                 "provider-unavailable", f"Provider '{name}' is unavailable")
         return provider
 
@@ -401,7 +401,7 @@ class TaskStore:
         try:
             normalized = str(uuid.UUID(task_id))
         except (ValueError, TypeError, AttributeError) as error:
-            raise ManagerError("invalid-task", "Invalid task ID") from error
+            raise FirmwareError("invalid-task", "Invalid task ID") from error
         return self.task_dir / f"{normalized}.json"
 
     def write(self, task):
@@ -425,7 +425,7 @@ class TaskStore:
         try:
             return json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError as error:
-            raise ManagerError("task-not-found", "Task was not found") from error
+            raise FirmwareError("task-not-found", "Task was not found") from error
 
     def list(self):
         if not self.task_dir.is_dir():
@@ -453,13 +453,13 @@ class StagingStore:
             source_fd = os.open(source, flags)
             source_stat = os.fstat(source_fd)
         except OSError as error:
-            raise ManagerError("source-unavailable", "Firmware file is unavailable") from error
+            raise FirmwareError("source-unavailable", "Firmware file is unavailable") from error
         if not stat.S_ISREG(source_stat.st_mode):
             os.close(source_fd)
-            raise ManagerError("invalid-source", "Firmware source is not a regular file")
+            raise FirmwareError("invalid-source", "Firmware source is not a regular file")
         if source_stat.st_size > self.max_size:
             os.close(source_fd)
-            raise ManagerError("firmware-too-large", "Firmware file exceeds the size limit")
+            raise FirmwareError("firmware-too-large", "Firmware file exceeds the size limit")
 
         token = str(uuid.uuid4())
         self.staging_dir.mkdir(parents=True, exist_ok=True)
@@ -476,7 +476,7 @@ class StagingStore:
                         break
                     size += len(chunk)
                     if size > self.max_size:
-                        raise ManagerError(
+                        raise FirmwareError(
                             "firmware-too-large",
                             "Firmware file exceeds the size limit",
                         )
@@ -517,15 +517,15 @@ class StagingStore:
         try:
             normalized = str(uuid.UUID(token))
         except (ValueError, TypeError, AttributeError) as error:
-            raise ManagerError("invalid-staging-token", "Invalid staging token") from error
+            raise FirmwareError("invalid-staging-token", "Invalid staging token") from error
         path = self.staging_dir / normalized
         metadata_path = self.staging_dir / f"{normalized}.json"
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
-            raise ManagerError("staging-not-found", "Staged firmware was not found") from error
+            raise FirmwareError("staging-not-found", "Staged firmware was not found") from error
         if not path.is_file():
-            raise ManagerError("staging-not-found", "Staged firmware was not found")
+            raise FirmwareError("staging-not-found", "Staged firmware was not found")
         digest = hashlib.sha256()
         size = 0
         try:
@@ -534,10 +534,10 @@ class StagingStore:
                     size += len(chunk)
                     digest.update(chunk)
         except OSError as error:
-            raise ManagerError(
+            raise FirmwareError(
                 "staging-unavailable", "Staged firmware is unavailable") from error
         if size != metadata.get("size") or digest.hexdigest() != metadata.get("sha256"):
-            raise ManagerError(
+            raise FirmwareError(
                 "staging-integrity-failed", "Staged firmware integrity check failed")
         return path, metadata
 
@@ -545,13 +545,13 @@ class StagingStore:
         try:
             normalized = str(uuid.UUID(token))
         except (ValueError, TypeError, AttributeError) as error:
-            raise ManagerError("invalid-staging-token", "Invalid staging token") from error
+            raise FirmwareError("invalid-staging-token", "Invalid staging token") from error
         path = self.staging_dir / normalized
         metadata_path = self.staging_dir / f"{normalized}.json"
         try:
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as error:
-            raise ManagerError("staging-not-found", "Staged firmware was not found") from error
+            raise FirmwareError("staging-not-found", "Staged firmware was not found") from error
         return normalized, path, metadata_path, metadata
 
     def list(self):
@@ -568,10 +568,10 @@ class StagingStore:
     def claim(self, token, task_id):
         normalized, path, metadata_path, metadata = self._metadata(token)
         if not path.is_file():
-            raise ManagerError("staging-not-found", "Staged firmware was not found")
+            raise FirmwareError("staging-not-found", "Staged firmware was not found")
         owner = metadata.get("claimed_by_task")
         if owner and owner != task_id:
-            raise ManagerError("staging-in-use", "Staged firmware is in use")
+            raise FirmwareError("staging-in-use", "Staged firmware is in use")
         metadata["claimed_by_task"] = task_id
         metadata["last_used_at"] = time.time()
         self._write_metadata(metadata_path, metadata)
@@ -580,7 +580,7 @@ class StagingStore:
     def release(self, token, task_id=None):
         try:
             _, _, metadata_path, metadata = self._metadata(token)
-        except ManagerError:
+        except FirmwareError:
             return
         if task_id is None or metadata.get("claimed_by_task") == task_id:
             metadata["claimed_by_task"] = None
@@ -590,14 +590,14 @@ class StagingStore:
     def consume(self, token, task_id=None):
         _, path, metadata_path, metadata = self._metadata(token)
         if metadata.get("claimed_by_task") not in (None, task_id):
-            raise ManagerError("staging-in-use", "Staged firmware is in use")
+            raise FirmwareError("staging-in-use", "Staged firmware is in use")
         path.unlink(missing_ok=True)
         metadata_path.unlink(missing_ok=True)
 
     def delete(self, token):
         normalized, path, metadata_path, metadata = self._metadata(token)
         if metadata.get("claimed_by_task"):
-            raise ManagerError("staging-in-use", "Staged firmware is in use")
+            raise FirmwareError("staging-in-use", "Staged firmware is in use")
         path.unlink(missing_ok=True)
         metadata_path.unlink(missing_ok=True)
         return normalized
@@ -613,7 +613,7 @@ class StagingStore:
                 continue
             try:
                 deleted.append(self.delete(metadata["token"]))
-            except ManagerError:
+            except FirmwareError:
                 continue
         return deleted
 
@@ -622,7 +622,7 @@ class StagingStore:
             if metadata.get("claimed_by_task") == task_id:
                 self.release(metadata["token"], task_id)
 
-class FirmwareManager:
+class FirmwareTaskCore:
     def __init__(self, registry=None, task_store=None, task_runner=None,
                  staging_store=None):
         self.registry = registry or ProviderRegistry()
@@ -647,7 +647,7 @@ class FirmwareManager:
                     flags |= fcntl.LOCK_NB
                 fcntl.flock(descriptor, flags)
             except BlockingIOError as error:
-                raise ManagerError(
+                raise FirmwareError(
                     "firmware-busy", "Another firmware operation is starting"
                 ) from error
             yield
@@ -694,14 +694,14 @@ class FirmwareManager:
             if (key == "token" or key.startswith("firmware_")) and isinstance(value, str):
                 tokens.append(value)
             elif isinstance(value, dict):
-                tokens.extend(FirmwareManager._staging_tokens(value))
+                tokens.extend(FirmwareTaskCore._staging_tokens(value))
         return list(dict.fromkeys(tokens))
 
     def _start_task(self, provider_name, payload, operation):
         provider = self.registry.get(provider_name)
         method_name = "rollback" if operation == "rollback" else "start"
         if not hasattr(provider, method_name):
-            raise ManagerError(
+            raise FirmwareError(
                 "operation-unsupported",
                 f"Provider '{provider_name}' does not support {operation}",
             )
@@ -711,7 +711,7 @@ class FirmwareManager:
         with self._admission_lock():
             self._reconcile_running_tasks()
             if any(task.get("state") == "running" for task in self.task_store.list()):
-                raise ManagerError(
+                raise FirmwareError(
                     "firmware-busy", "Another firmware operation is running")
 
             claimed_tokens = []
@@ -752,7 +752,7 @@ class FirmwareManager:
                     self.task_store.write(task)
                 for token in claimed_tokens:
                     self.staging_store.release(token, task_id)
-                raise ManagerError(
+                raise FirmwareError(
                     "worker-start-failed",
                     "Firmware worker could not be started",
                 ) from error
@@ -795,7 +795,7 @@ class FirmwareManager:
         except Exception as error:
             task["state"] = "failed"
             task["phase"] = "failed"
-            if isinstance(error, ManagerError):
+            if isinstance(error, FirmwareError):
                 task["error"] = {
                     "code": error.code,
                     "message": error.message,
@@ -818,7 +818,7 @@ class FirmwareManager:
                         self.staging_store.consume(token, task["id"])
                     else:
                         self.staging_store.release(token, task["id"])
-                except ManagerError:
+                except FirmwareError:
                     pass
         return task
 
@@ -826,27 +826,27 @@ class FirmwareManager:
         request_id = request.get("id")
         try:
             if request.get("v") != PROTOCOL_VERSION:
-                raise ManagerError(
+                raise FirmwareError(
                     "unsupported-version",
                     f"Only protocol version {PROTOCOL_VERSION} is supported",
                 )
             operation = request.get("op")
             payload = request.get("payload", {})
             if not isinstance(payload, dict):
-                raise ManagerError("invalid-request", "payload must be an object")
+                raise FirmwareError("invalid-request", "payload must be an object")
 
             if operation == "capabilities.list":
                 data = self.registry.capabilities()
             elif operation == "inspect.get":
                 provider_name = request.get("provider")
                 if not provider_name:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "invalid-request", "inspect.get requires a provider")
                 provider = self.registry.get(provider_name)
                 if payload.get("operation") == "rollback":
                     inspect = getattr(provider, "inspect_rollback", None)
                     if inspect is None:
-                        raise ManagerError(
+                        raise FirmwareError(
                             "operation-unsupported",
                             f"Provider '{provider_name}' does not support rollback",
                         )
@@ -856,26 +856,26 @@ class FirmwareManager:
             elif operation == "staging.import":
                 source_path = payload.get("path")
                 if not source_path:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "invalid-request", "staging.import requires a path")
                 data = self.staging_store.import_file(
                     source_path, payload.get("name"))
             elif operation == "action.start":
                 provider_name = request.get("provider")
                 if not provider_name:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "invalid-request", "action.start requires a provider")
                 data = self._start_task(provider_name, payload, "update")
             elif operation == "action.rollback":
                 provider_name = request.get("provider")
                 if not provider_name:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "invalid-request", "action.rollback requires a provider")
                 data = self._start_task(provider_name, payload, "rollback")
             elif operation == "task.get":
                 task_id = payload.get("task_id")
                 if not task_id:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "invalid-request", "task.get requires a task_id")
                 with self._admission_lock(blocking=True):
                     self._reconcile_running_tasks()
@@ -885,7 +885,7 @@ class FirmwareManager:
             elif operation == "staging.delete":
                 token = payload.get("token")
                 if not token:
-                    raise ManagerError(
+                    raise FirmwareError(
                         "invalid-request", "staging.delete requires a token")
                 data = {"token": self.staging_store.delete(token)}
             elif operation == "staging.gc":
@@ -894,7 +894,7 @@ class FirmwareManager:
                         payload.get("older_than_seconds", 86400))
                 }
             else:
-                raise ManagerError(
+                raise FirmwareError(
                     "unknown-operation", f"Unknown operation '{operation}'")
 
             return {
@@ -903,7 +903,7 @@ class FirmwareManager:
                 "ok": True,
                 "data": data,
             }
-        except ManagerError as error:
+        except FirmwareError as error:
             return {
                 "v": PROTOCOL_VERSION,
                 "id": request_id,
@@ -929,9 +929,9 @@ def decode_request(line):
     try:
         request = json.loads(line)
     except (TypeError, ValueError) as error:
-        raise ManagerError("invalid-json", "Request is not valid JSON") from error
+        raise FirmwareError("invalid-json", "Request is not valid JSON") from error
     if not isinstance(request, dict):
-        raise ManagerError("invalid-request", "Request must be an object")
+        raise FirmwareError("invalid-request", "Request must be an object")
     return request
 
 
