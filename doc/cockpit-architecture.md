@@ -23,7 +23,7 @@ The current self-developed integrations are separate Cockpit packages:
 
 | Feature | Layer and package | Cockpit ID | Navigation | Availability | Backend boundary |
 | --- | --- | --- | --- | --- | --- |
-| Firmware | `meta-example`, `iot2050-cockpit-firmware` | `iot2050-firmware` | System | All supported images | `iot2050-firmware-manager` and its root-only Unix socket |
+| Firmware | `meta-example`, `iot2050-cockpit-firmware` | `iot2050-firmware` | System | All supported images | `iot2050-fwmgr` and its systemd task workers |
 | EIO Config | `meta-sm`, `iot2050-cockpit-eio-config` | `iot2050-eio-config` | System | SM board condition | EIO configuration bridge on the loopback interface |
 | Device Admin | `meta-example`, `iot2050-cockpit-device-admin` | `iot2050-device-admin` | System | All supported images | Fixed-operation `iot2050-device-admin` helper |
 

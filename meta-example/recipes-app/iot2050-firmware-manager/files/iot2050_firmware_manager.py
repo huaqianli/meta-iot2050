@@ -604,13 +604,16 @@ class FirmwareManager:
 
     @staticmethod
     @contextlib.contextmanager
-    def _admission_lock():
+    def _admission_lock(blocking=False):
         path = Path(TASK_ADMISSION_LOCK)
         path.parent.mkdir(parents=True, exist_ok=True)
         descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                flags = fcntl.LOCK_EX
+                if not blocking:
+                    flags |= fcntl.LOCK_NB
+                fcntl.flock(descriptor, flags)
             except BlockingIOError as error:
                 raise ManagerError(
                     "firmware-busy", "Another firmware operation is starting"
@@ -842,7 +845,7 @@ class FirmwareManager:
                 if not task_id:
                     raise ManagerError(
                         "invalid-request", "task.get requires a task_id")
-                with self._admission_lock():
+                with self._admission_lock(blocking=True):
                     self._reconcile_running_tasks()
                 data = self.task_store.read(task_id)
             elif operation == "staging.list":

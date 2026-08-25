@@ -10,7 +10,6 @@ but not package formats or flashing logic.
 | Component | Location | Responsibility |
 | --- | --- | --- |
 | Cockpit package | `/usr/share/cockpit/iot2050-firmware` | File selection, inspection results, confirmation, and task status |
-| Local client | `/usr/sbin/iot2050-fwmgr` | JSON command adapter used by Cockpit with `superuser: require` |
 | Backend | `/usr/sbin/iot2050-fwmgr` | Fixed operation dispatch, provider discovery, staging, and task persistence |
 | Task worker | `iot2050-firmware-task@.service` | Runs one persistent firmware task outside the Cockpit request process |
 | System Firmware service | `/run/iot2050/system-firmware.sock` | Root-only gRPC service for System Firmware operations |

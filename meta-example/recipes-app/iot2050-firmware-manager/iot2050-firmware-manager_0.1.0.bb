@@ -16,6 +16,7 @@ SRC_URI = " \
     file://iot2050-firmware-task@.service \
     file://iot2050-firmware-staging-gc.service \
     file://iot2050-firmware-staging-gc.timer \
+    file://prerm \
     file://postinst \
     "
 
