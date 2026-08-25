@@ -35,15 +35,17 @@ IMAGE_PREINSTALL += "${@ ' \
 
 IMAGE_INSTALL += " \
     expand-on-first-boot \
-    ssh-root-login \
+    iot2050-pam-conf \
+    iot2050-ssh-conf \
+    ${@ 'ssh-root-login' if d.getVar('IOT2050_DEV_COMPAT_ROOT_SSH') == '1' else '' } \
     sshd-regen-keys \
     install-on-emmc \
     iot2050-web-gateway-nginx \
     iot2050-firewall-default \
     iot2050-firstboot-onboarding \
     iot2050-cockpit-customization \
-    iot2050-firmware-webui \
-    iot2050-device-admin-webui \
+    iot2050-cockpit-firmware \
+    iot2050-cockpit-device-admin \
     iot2050-nm-settings \
     change-root-homedir \
     iot2050-firmware-update \
