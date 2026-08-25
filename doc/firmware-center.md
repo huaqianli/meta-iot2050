@@ -11,8 +11,8 @@ but not package formats or flashing logic.
 | --- | --- | --- |
 | Cockpit package | `/usr/share/cockpit/iot2050-firmware` | File selection, inspection results, confirmation, and task status |
 | Local client | `/usr/sbin/iot2050-fwmgr` | JSON command adapter used by Cockpit with `superuser: require` |
-| Manager | `/usr/lib/iot2050/firmware-manager` | Provider discovery, staging, and task persistence |
-| Manager socket | `/run/iot2050/firmware-manager.sock` | Root-only, systemd-activated JSON Lines IPC |
+| Backend | `/usr/sbin/iot2050-fwmgr` | Fixed operation dispatch, provider discovery, staging, and task persistence |
+| Task worker | `iot2050-firmware-task@.service` | Runs one persistent firmware task outside the Cockpit request process |
 | System Firmware service | `/run/iot2050/system-firmware.sock` | Root-only gRPC service for System Firmware operations |
 | SM providers | `iot2050-firmware-provider-sm` | Controller and module adapters installed only with SM support |
 
@@ -27,10 +27,9 @@ All firmware domains use the same privileged control path:
 flowchart LR
     UI[Cockpit Firmware Center]
     CLI["/usr/sbin/iot2050-fwmgr"]
-    Socket["root-only Unix socket<br/>/run/iot2050/firmware-manager.sock"]
-    Daemon[iot2050_firmware_manager_daemon.py]
-    Handler[FirmwareRequestHandler]
-    Manager[FirmwareManager]
+    Backend[iot2050-fwmgr]
+    Worker[systemd task worker]
+    Manager[Firmware task core]
     System[SystemFirmwareProvider]
     SystemRPC[System Firmware gRPC<br/>Inspect / Update / Rollback]
     Controller[EIOControllerProvider]
@@ -40,27 +39,25 @@ flowchart LR
     ModuleBackend[iot2050-module-firmware-update CLI<br/>EIOFS slotN/fwa and slotN/fwb]
 
     UI -->|cockpit.spawn<br/>superuser: require| CLI
-    CLI -->|JSON Lines| Socket
-    Socket -->|systemd activation| Daemon
-    Daemon --> Handler
-    Handler --> Manager
+    CLI --> Backend
+    Backend --> Manager
     Manager --> System
     Manager --> Controller
     Manager --> Module
+    Manager --> Worker
     System --> SystemRPC
     SystemRPC --> SystemBackend
     Controller --> ControllerRPC
     Module --> ModuleBackend
 ```
 
-The browser only calls the local `iot2050-fwmgr` client. The client serializes
-the operation as one JSON request per line. `FirmwareRequestHandler` decodes
-the request and passes it to `FirmwareManager`, which applies the common
-permission, provider, staging, task, locking, and error-handling rules. The
-selected provider then invokes the domain-specific firmware backend. System
-Firmware uses its root-only gRPC service, while the SM controller provider uses
-the existing EIOManager service. The result follows the same path back to the
-Cockpit page.
+The browser only calls the local `iot2050-fwmgr` backend. The backend validates
+the fixed JSON command contract and passes the request to the firmware task
+core. Inspection is handled in the request process; a write creates a durable
+task and starts one systemd worker. The worker invokes the selected provider,
+which then uses the domain-specific firmware backend. System Firmware uses its
+root-only gRPC service, while the SM controller provider uses the existing
+EIOManager service. The result follows the same path back to the Cockpit page.
 
 The page shows the device identity as `Name`, `MLFB`, and `SN`. System Firmware
 also shows the OS image version, current firmware version, and expected package
@@ -98,14 +95,13 @@ The currently supported operations are:
 - `action.rollback`: restore the shared local System Firmware backup.
 - `staging.list`, `staging.delete`, `staging.gc`: operator maintenance of uploaded artifacts.
 
-The manager currently accepts one task at a time, while the backend resource
-locks also protect direct CLI and service entry points. System Firmware uses a
-separate resource from EIO Controller and Module; the two EIO operations share
-one resource. A competing operation is rejected with `firmware-busy`. Tasks
-transition through `running` and
-`succeeded` or `failed`. A task left in `running` after manager restart is
-marked `failed/interrupted`; automatic flash resume is intentionally not
-attempted.
+The backend accepts one task at a time, while the backend resource locks also
+protect direct CLI and service entry points. System Firmware uses a separate
+resource from EIO Controller and Module; the two EIO operations share one
+resource. A competing operation is rejected with `firmware-busy`. Tasks
+transition through `running` and `succeeded` or `failed`. A task left in
+`running` after its systemd worker disappears is marked `failed/interrupted`;
+automatic flash resume is intentionally not attempted.
 
 Provider descriptors in `providers.d` isolate optional hardware support. A bad
 optional descriptor is logged and skipped instead of disabling the System
@@ -128,12 +124,12 @@ retrying.
 
 ### Staging
 
-The manager copies input through an `O_NOFOLLOW` file descriptor, accepts only
+The backend copies input through an `O_NOFOLLOW` file descriptor, accepts only
 regular files, enforces a size limit, and stores data and metadata under a
 root-only directory. `resolve()` recomputes size and SHA-256 before every
 inspection or update so that a modified staged object is rejected.
 
-Tokens are capabilities for files already inside manager-controlled storage;
+Tokens are capabilities for files already inside backend-controlled storage;
 providers never accept arbitrary paths from Cockpit.
 
 Staged artifacts are claimed by their task before a worker starts. Successful
@@ -154,7 +150,7 @@ Managed System Firmware updates have stricter behavior than the legacy CLI:
 - Member count and total extracted size are bounded.
 - System Firmware operations run in the root-owned service with `HOME=/root`,
   so all clients use one process-owned rollback location.
-- CLI and manager use the same process-home backup file at
+- CLI and backend use the same process-home backup file at
   `${HOME}/.rollback_fw/rollback_backup_fw.tar`. An explicit CLI
   `--backup-dir` remains a compatibility override.
 - Web rollback uses that local backup and verifies its SHA-256 metadata before
@@ -176,9 +172,9 @@ its existing arguments and numeric return codes remain stable. New code must
 not implement the Web path by calling the CLI `main()` because that would
 inherit interactive confirmation and blind retry behavior.
 
-The manager socket remains `0600 root:root`. Product administrators use
-Cockpit's `superuser: require` flow backed by their `sudo` membership; the
-`iot2050-admin` group is not granted direct firmware-socket access.
+The backend and its systemd task worker run as root. Product administrators use
+Cockpit's `superuser: require` flow backed by their `sudo` membership; no
+direct firmware socket is exposed to product users.
 
 ### SM-only providers
 

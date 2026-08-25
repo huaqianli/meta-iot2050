@@ -680,6 +680,7 @@ class FirmwareManager:
                     "firmware-busy", "Another firmware operation is running")
 
             claimed_tokens = []
+            task = None
             try:
                 for token in staging_tokens:
                     self.staging_store.claim(token, task_id)
@@ -702,15 +703,18 @@ class FirmwareManager:
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     text=True,
+                    timeout=30,
                 )
-            except subprocess.CalledProcessError as error:
-                task["state"] = "failed"
-                task["phase"] = "failed"
-                task["error"] = {
-                    "code": "worker-start-failed",
-                    "message": "Firmware worker could not be started",
-                }
-                self.task_store.write(task)
+            except (OSError, subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired) as error:
+                if task is not None:
+                    task["state"] = "failed"
+                    task["phase"] = "failed"
+                    task["error"] = {
+                        "code": "worker-start-failed",
+                        "message": "Firmware worker could not be started",
+                    }
+                    self.task_store.write(task)
                 for token in claimed_tokens:
                     self.staging_store.release(token, task_id)
                 raise ManagerError(
