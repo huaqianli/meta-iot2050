@@ -6,6 +6,8 @@
 
 import os
 
+from iot2050_firmware_operation_lock import firmware_operation_lock
+
 
 DEFAULT_CONTROLLER_PATH = "/eiofs/controller"
 
@@ -40,19 +42,20 @@ def update_module_firmware(slot, firmware_a=None, firmware_b=None,
     slot_path = os.path.join(controller_path, f"slot{slot}")
     results = {}
 
-    for chip, firmware, node in (
-        ("A", firmware_a, "fwa"),
-        ("B", firmware_b, "fwb"),
-    ):
-        if firmware is None:
-            continue
-        if on_chip_start is not None:
-            on_chip_start(chip)
-        try:
-            _write_firmware(os.path.join(slot_path, node), firmware)
-        except Exception as error:
-            results[chip] = {"success": False, "error": str(error)}
-            raise ModuleFirmwareUpdateError(chip, error, results) from error
-        results[chip] = {"success": True}
+    with firmware_operation_lock(resource="eio"):
+        for chip, firmware, node in (
+            ("A", firmware_a, "fwa"),
+            ("B", firmware_b, "fwb"),
+        ):
+            if firmware is None:
+                continue
+            if on_chip_start is not None:
+                on_chip_start(chip)
+            try:
+                _write_firmware(os.path.join(slot_path, node), firmware)
+            except Exception as error:
+                results[chip] = {"success": False, "error": str(error)}
+                raise ModuleFirmwareUpdateError(chip, error, results) from error
+            results[chip] = {"success": True}
 
     return results

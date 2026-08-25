@@ -9,7 +9,7 @@ PR = "1"
 
 inherit dpkg-raw
 
-DESCRIPTION = "IOT2050 EIO WebUI Cockpit plugin"
+DESCRIPTION = "IOT2050 EIO Config Cockpit plugin"
 
 NPMPN ?= "iot2050-eio-config"
 NPM_SHRINKWRAP ?= "file://npm-shrinkwrap.json.nodev"

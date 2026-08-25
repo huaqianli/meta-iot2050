@@ -11,7 +11,10 @@ import threading
 from pathlib import Path
 
 
-LOCK_PATH = "/run/iot2050/firmware-operation.lock"
+RESOURCE_LOCK_PATHS = {
+    "system": "/run/iot2050/firmware-system.lock",
+    "eio": "/run/iot2050/firmware-eio.lock",
+}
 _local = threading.local()
 
 
@@ -20,17 +23,20 @@ class FirmwareOperationBusy(RuntimeError):
 
 
 @contextlib.contextmanager
-def firmware_operation_lock(path=None, blocking=False):
-    depth = getattr(_local, "depth", 0)
+def firmware_operation_lock(resource="system", blocking=False, path=None):
+    if path is None and resource not in RESOURCE_LOCK_PATHS:
+        raise ValueError(f"Unknown firmware resource: {resource}")
+    lock_path = Path(path or RESOURCE_LOCK_PATHS[resource])
+    depths = getattr(_local, "depths", {})
+    depth = depths.get(str(lock_path), 0)
     if depth:
-        _local.depth = depth + 1
+        depths[str(lock_path)] = depth + 1
         try:
             yield
         finally:
-            _local.depth -= 1
+            depths[str(lock_path)] -= 1
         return
 
-    lock_path = Path(path or LOCK_PATH)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
     try:
@@ -41,10 +47,11 @@ def firmware_operation_lock(path=None, blocking=False):
             fcntl.flock(descriptor, flags)
         except BlockingIOError as error:
             raise FirmwareOperationBusy("Another firmware operation is active") from error
-        _local.depth = 1
+        depths[str(lock_path)] = 1
+        _local.depths = depths
         yield
     finally:
-        _local.depth = 0
+        depths.pop(str(lock_path), None)
         try:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
         finally:

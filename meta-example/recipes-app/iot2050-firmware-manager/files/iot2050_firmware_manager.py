@@ -25,9 +25,6 @@ DEFAULT_TASK_DIR = "/var/lib/iot2050-fwmgr/tasks"
 DEFAULT_STAGING_DIR = "/var/lib/iot2050-fwmgr/staging"
 DEFAULT_FIRMWARE_DIR = "/usr/share/iot2050/fwu"
 DEFAULT_FIRMWARE_PATTERN = "IOT2050-FW-Update-PKG-*.tar.xz"
-# Must match iot2050_firmware_update.DEFAULT_ROLLBACK_DIR. Keeping this as one
-# canonical path lets the legacy CLI and manager rollback the same artifact.
-DEFAULT_SYSTEM_BACKUP_DIR = "/var/lib/iot2050/firmware-update"
 DEFAULT_MAX_FIRMWARE_SIZE = 64 * 1024 * 1024
 
 
@@ -44,9 +41,9 @@ class ManagerError(Exception):
 class SystemFirmwareProvider:
     name = "system"
 
-    def __init__(self, backup_dir=DEFAULT_SYSTEM_BACKUP_DIR,
+    def __init__(self, backup_dir=None,
                  firmware_dir=DEFAULT_FIRMWARE_DIR):
-        self.backup_dir = Path(backup_dir)
+        self.backup_dir = Path(backup_dir) if backup_dir else None
         self.firmware_dir = Path(firmware_dir)
         self.staging_store = None
 
@@ -144,14 +141,12 @@ class SystemFirmwareProvider:
 
     def start(self, request, progress, staging_store):
         path, package = self._resolve(request, staging_store)
-        self.backup_dir.mkdir(parents=True, exist_ok=True)
-        os.chmod(self.backup_dir, 0o700)
         try:
             from iot2050_firmware_update import update_system_firmware
             progress("checking-compatibility-and-signature")
             result = update_system_firmware(
                 path,
-                str(self.backup_dir),
+                str(self.backup_dir) if self.backup_dir else None,
                 preserve_list=request.get("preserve_list"),
                 reset=bool(request.get("reset", False)),
                 progress=progress,
@@ -578,7 +573,6 @@ class TaskRunner:
         self.staging_store = staging_store
         self.executor = executor or ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="firmware-update")
-        self._hardware_lock = threading.Lock()
         self._state_lock = threading.Lock()
         self._active_task_id = None
         self._accepting = True
@@ -649,10 +643,7 @@ class TaskRunner:
         return task
 
     def _run(self, task, provider, payload, method_name):
-        from iot2050_firmware_operation_lock import (
-            firmware_operation_lock,
-            FirmwareOperationBusy,
-        )
+        from iot2050_firmware_operation_lock import FirmwareOperationBusy
 
         def progress(phase):
             task["phase"] = phase
@@ -663,9 +654,8 @@ class TaskRunner:
 
         try:
             self.store.write(task)
-            with self._hardware_lock, firmware_operation_lock():
-                task["result"] = getattr(provider, method_name)(
-                    payload, progress, self.staging_store)
+            task["result"] = getattr(provider, method_name)(
+                payload, progress, self.staging_store)
             task["state"] = "succeeded"
             task["phase"] = "succeeded"
         except FirmwareOperationBusy:

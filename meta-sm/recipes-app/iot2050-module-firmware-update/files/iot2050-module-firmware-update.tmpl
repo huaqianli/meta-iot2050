@@ -15,7 +15,7 @@ from iot2050_module_firmware_update import (
     ModuleFirmwareUpdateError,
     update_module_firmware,
 )
-from iot2050_firmware_operation_lock import firmware_operation_lock
+from iot2050_firmware_operation_lock import FirmwareOperationBusy
 
 def main(args):
     description=textwrap.dedent('''\
@@ -52,13 +52,15 @@ def main(args):
         return 1
 
     try:
-        with firmware_operation_lock():
-            update_module_firmware(
-                args.slot,
-                args.firmware_a,
-                args.firmware_b,
-                on_chip_start=lambda chip: print(f"Updating firmware {chip} ..."),
-            )
+        update_module_firmware(
+            args.slot,
+            args.firmware_a,
+            args.firmware_b,
+            on_chip_start=lambda chip: print(f"Updating firmware {chip} ..."),
+        )
+    except FirmwareOperationBusy as e:
+        print(f"Error: {e}")
+        return 1
     except ModuleFirmwareUpdateError as e:
         print(f"Error: Failed to write firmware {e.chip}, {e.error}")
         return 1

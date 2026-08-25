@@ -132,10 +132,9 @@ from cryptography.exceptions import InvalidSignature
 from iot2050_firmware_operation_lock import firmware_operation_lock
 
 
-# The default backup is shared by the legacy CLI and the privileged manager.
-# An explicit --backup-dir remains a compatibility escape hatch, but must not
-# create a second implicit backup pool.
-DEFAULT_ROLLBACK_DIR = "/var/lib/iot2050/firmware-update"
+DEFAULT_ROLLBACK_DIR = os.path.join(
+    os.environ.get("HOME") or os.path.expanduser("~"), ".rollback_fw"
+)
 DEFAULT_ROLLBACK_TAR = os.path.join(
     DEFAULT_ROLLBACK_DIR, "rollback_backup_fw.tar"
 )
@@ -1219,7 +1218,7 @@ def update_system_firmware(firmware_path, backup_dir,
                            public_key_path=None, pg2_only=False):
     """Perform one signed update attempt without prompts, retry or reboot."""
     interactor = NonInteractiveInterface(progress)
-    with firmware_operation_lock():
+    with firmware_operation_lock(resource="system"):
         with open(firmware_path, "rb") as archive:
             package = FirmwareTarball(
                 archive, interactor, preserve_list, verify_signature_flag=True,
@@ -1291,10 +1290,10 @@ def inspect_system_rollback(backup_dir=None):
 
 def rollback_system_firmware(backup_dir=None, progress=None):
     """Perform one non-interactive rollback using the shared local backup."""
-    with firmware_operation_lock():
+    with firmware_operation_lock(resource="system"):
         details = inspect_system_rollback(backup_dir)
         interactor = NonInteractiveInterface(progress)
-        rollback_root = backup_dir or DEFAULT_ROLLBACK_DIR
+        rollback_root = backup_dir
         updater = None
         try:
             updater = FirmwareUpdate(
@@ -1315,7 +1314,7 @@ def rollback_system_firmware(backup_dir=None, progress=None):
 
 def perform_hardware_update(updater, args, interactor):
     """Run the legacy CLI hardware phase under the shared process lock."""
-    with firmware_operation_lock():
+    with firmware_operation_lock(resource="system"):
         if args.rollback:
             rollback_confirm = interactor.interact(
                 'y',
@@ -1470,8 +1469,6 @@ def main(argv):
         if args.force:
             updater = ForceUpdate(interactor, args.firmware)
         else:
-            if not args.backup_dir:
-                args.backup_dir = DEFAULT_ROLLBACK_DIR
             updater = FirmwareUpdate(
                 tarball,
                 args.backup_dir,

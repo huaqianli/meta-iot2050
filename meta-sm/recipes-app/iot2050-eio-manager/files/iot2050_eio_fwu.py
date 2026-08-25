@@ -14,7 +14,10 @@ from types import SimpleNamespace as Namespace
 import gpiod
 from gpiod.line import Direction, Value
 import os
-from iot2050_firmware_operation_lock import firmware_operation_lock
+from iot2050_firmware_operation_lock import (
+    FirmwareOperationBusy,
+    firmware_operation_lock,
+)
 from iot2050_eio_global import (
     EIO_FS_FW_VER,
     EIO_FWU_META,
@@ -327,8 +330,10 @@ class FirmwareUpdateChecker():
 
 def update_firmware(firmware, entity):
     try:
-        with firmware_operation_lock():
+        with firmware_operation_lock(resource="eio"):
             FirmwareUpdate(firmware, entity).update()
         return 0, "Firmware upgrade successfully!"
+    except FirmwareOperationBusy as e:
+        return 1, str(e)
     except UpgradeError as e:
         return 1, e

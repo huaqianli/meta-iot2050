@@ -91,8 +91,8 @@ and all references together.
 Use a feature-specific name for new packages, for example:
 
 ```text
-iot2050-<feature>-webui
-iot2050-<feature>-integration
+iot2050-cockpit-<feature>
+iot2050-cockpit-<feature>-integration
 ```
 
 Do not use a generic package name such as `iot2050-system-webui` for unrelated
