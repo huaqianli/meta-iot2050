@@ -14,6 +14,7 @@ import json
 import os
 import sys
 import textwrap
+import uuid
 
 import grpc
 
@@ -69,6 +70,8 @@ def serve_module_firmware_grpc():
     from iot2050_module_firmware_pb2 import (
         CapabilitiesReply,
         InspectionReply,
+        OperationReply,
+        OperationRequest,
         SlotInspection,
         UpdateReply,
     )
@@ -76,8 +79,18 @@ def serve_module_firmware_grpc():
         ModuleFirmwareServicer,
         add_ModuleFirmwareServicer_to_server,
     )
+    from iot2050_firmware_operation_store import FirmwareOperationStore
 
     class Service(ModuleFirmwareServicer):
+        def __init__(self):
+            self.operation_store = FirmwareOperationStore(
+                "/var/lib/iot2050/module-firmware/operations"
+            )
+            self.operation_store.recover_running()
+            self.operations_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1
+            )
+
         def GetCapabilities(self, request, context):
             return CapabilitiesReply(
                 supported=True,
@@ -112,7 +125,27 @@ def serve_module_firmware_grpc():
                 slots=[SlotInspection(**slot) for slot in slots],
             )
 
-        def Update(self, request, context):
+        @staticmethod
+        def _operation_details(response):
+            return {
+                "slot": response.slot,
+                "chips": {
+                    "A": {
+                        "attempted": response.chip_a.attempted,
+                        "success": response.chip_a.success,
+                        "error": response.chip_a.error,
+                    },
+                    "B": {
+                        "attempted": response.chip_b.attempted,
+                        "success": response.chip_b.success,
+                        "error": response.chip_b.error,
+                    },
+                },
+                "partial_failure": response.partial_failure,
+                "reboot_required": response.reboot_required,
+            }
+
+        def _update(self, request):
             if not request.firmware_a and not request.firmware_b:
                 return UpdateReply(
                     ok=False,
@@ -163,6 +196,70 @@ def serve_module_firmware_grpc():
                     slot=request.slot,
                 )
 
+        def Update(self, request, context):
+            return self._update(request)
+
+        def StartUpdate(self, request, context):
+            operation_id = str(uuid.uuid4())
+            self.operation_store.create(operation_id, {
+                "state": "running",
+                "ok": False,
+                "code": "operation-running",
+                "message": "Module firmware operation is running",
+                "details_json": "",
+            })
+
+            def run():
+                try:
+                    response = self._update(request)
+                    outcome = {
+                        "state": "succeeded" if response.ok else "failed",
+                        "ok": response.ok,
+                        "code": response.code,
+                        "message": response.message,
+                        "details_json": json.dumps(
+                            self._operation_details(response),
+                            separators=(",", ":"),
+                        ),
+                    }
+                except Exception:
+                    outcome = {
+                        "state": "failed",
+                        "ok": False,
+                        "code": "module-update-failed",
+                        "message": "Module firmware operation failed",
+                        "details_json": "",
+                    }
+                self.operation_store.update(operation_id, **outcome)
+
+            self.operations_executor.submit(run)
+            return OperationReply(
+                ok=True,
+                code="operation-started",
+                message="Module firmware operation started",
+                operation_id=operation_id,
+                state="running",
+            )
+
+        def GetOperation(self, request: OperationRequest, context):
+            try:
+                operation = self.operation_store.read(request.operation_id)
+            except KeyError:
+                return OperationReply(
+                    ok=False,
+                    code="operation-not-found",
+                    message="Module firmware operation was not found",
+                    state="unknown",
+                )
+            return OperationReply(
+                ok=operation["ok"],
+                code=operation["code"],
+                message=operation["message"],
+                details_json=operation["details_json"],
+                operation_id=request.operation_id,
+                state=operation["state"],
+            )
+
     server = grpc.server(
         concurrent.futures.ThreadPoolExecutor(max_workers=1),
         options=[
@@ -170,7 +267,8 @@ def serve_module_firmware_grpc():
             ("grpc.max_send_message_length", 1024 * 1024),
         ],
     )
-    add_ModuleFirmwareServicer_to_server(Service(), server)
+    service = Service()
+    add_ModuleFirmwareServicer_to_server(service, server)
     socket_path = MODULE_FIRMWARE_SOCKET.removeprefix("/run/iot2050/")
     os.makedirs("/run/iot2050", mode=0o755, exist_ok=True)
     try:
@@ -181,7 +279,15 @@ def serve_module_firmware_grpc():
         raise RuntimeError(f"Cannot bind {socket_path}")
     server.start()
     os.chmod(MODULE_FIRMWARE_SOCKET, 0o600)
-    server.wait_for_termination()
+    try:
+        server.wait_for_termination()
+    finally:
+        service.operations_executor.shutdown(wait=False, cancel_futures=True)
+        server.stop(grace=0)
+        try:
+            os.unlink(MODULE_FIRMWARE_SOCKET)
+        except FileNotFoundError:
+            pass
 
 
 class ModuleFirmwareUpdateSlot:

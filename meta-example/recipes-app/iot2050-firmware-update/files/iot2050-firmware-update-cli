@@ -106,6 +106,7 @@ def main(argv=None):
             response = stub.Rollback(RollbackRequest(
                 backup_dir=absolute_path(
                     args.backup_dir[0] if args.backup_dir else ""),
+                legacy_cli=True,
             ))
         else:
             preserve_list = [
@@ -120,6 +121,8 @@ def main(argv=None):
                 reset=args.reset,
                 no_backup=args.no_backup,
                 force=args.force,
+                verify_signature=args.verify,
+                legacy_cli=True,
             ), timeout=3600)
     except grpc.RpcError as error:
         print(f"System Firmware service unavailable: {error.details()}",

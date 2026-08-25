@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+systemctl daemon-reload >/dev/null 2>&1 || true
+
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || \
+   [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+    deb-systemd-helper enable 'iot2050-system-firmware.service' >/dev/null || true
+    deb-systemd-invoke start 'iot2050-system-firmware.service' >/dev/null || true
+fi

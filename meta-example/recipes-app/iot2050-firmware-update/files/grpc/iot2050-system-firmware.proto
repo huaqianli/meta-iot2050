@@ -6,8 +6,11 @@ service SystemFirmware {
   rpc GetCapabilities (Empty) returns (CapabilitiesReply) {}
   rpc Inspect (InspectRequest) returns (InspectionReply) {}
   rpc Update (UpdateRequest) returns (OperationReply) {}
+  rpc StartUpdate (UpdateRequest) returns (OperationReply) {}
+  rpc GetOperation (OperationRequest) returns (OperationReply) {}
   rpc InspectRollback (RollbackRequest) returns (RollbackReply) {}
   rpc Rollback (RollbackRequest) returns (OperationReply) {}
+  rpc StartRollback (RollbackRequest) returns (OperationReply) {}
 }
 
 message Empty {}
@@ -37,10 +40,13 @@ message UpdateRequest {
   bool pg2_only = 5;
   bool no_backup = 6;
   bool force = 7;
+  bool verify_signature = 8;
+  bool legacy_cli = 9;
 }
 
 message RollbackRequest {
   string backup_dir = 1;
+  bool legacy_cli = 2;
 }
 
 message RollbackReply {
@@ -55,4 +61,10 @@ message OperationReply {
   string code = 2;
   string message = 3;
   string details_json = 4;
+  string operation_id = 5;
+  string state = 6;
+}
+
+message OperationRequest {
+  string operation_id = 1;
 }

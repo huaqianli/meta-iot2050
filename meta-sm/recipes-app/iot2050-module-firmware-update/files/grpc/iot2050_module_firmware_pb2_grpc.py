@@ -29,6 +29,16 @@ class ModuleFirmwareStub(object):
                 request_serializer=iot2050__module__firmware__pb2.UpdateRequest.SerializeToString,
                 response_deserializer=iot2050__module__firmware__pb2.UpdateReply.FromString,
                 )
+        self.StartUpdate = channel.unary_unary(
+                '/iot2050.modulefirmware.ModuleFirmware/StartUpdate',
+                request_serializer=iot2050__module__firmware__pb2.UpdateRequest.SerializeToString,
+                response_deserializer=iot2050__module__firmware__pb2.OperationReply.FromString,
+                )
+        self.GetOperation = channel.unary_unary(
+                '/iot2050.modulefirmware.ModuleFirmware/GetOperation',
+                request_serializer=iot2050__module__firmware__pb2.OperationRequest.SerializeToString,
+                response_deserializer=iot2050__module__firmware__pb2.OperationReply.FromString,
+                )
 
 
 class ModuleFirmwareServicer(object):
@@ -52,6 +62,18 @@ class ModuleFirmwareServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def StartUpdate(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetOperation(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ModuleFirmwareServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -69,6 +91,16 @@ def add_ModuleFirmwareServicer_to_server(servicer, server):
                     servicer.Update,
                     request_deserializer=iot2050__module__firmware__pb2.UpdateRequest.FromString,
                     response_serializer=iot2050__module__firmware__pb2.UpdateReply.SerializeToString,
+            ),
+            'StartUpdate': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartUpdate,
+                    request_deserializer=iot2050__module__firmware__pb2.UpdateRequest.FromString,
+                    response_serializer=iot2050__module__firmware__pb2.OperationReply.SerializeToString,
+            ),
+            'GetOperation': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetOperation,
+                    request_deserializer=iot2050__module__firmware__pb2.OperationRequest.FromString,
+                    response_serializer=iot2050__module__firmware__pb2.OperationReply.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -128,5 +160,39 @@ class ModuleFirmware(object):
         return grpc.experimental.unary_unary(request, target, '/iot2050.modulefirmware.ModuleFirmware/Update',
             iot2050__module__firmware__pb2.UpdateRequest.SerializeToString,
             iot2050__module__firmware__pb2.UpdateReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StartUpdate(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/iot2050.modulefirmware.ModuleFirmware/StartUpdate',
+            iot2050__module__firmware__pb2.UpdateRequest.SerializeToString,
+            iot2050__module__firmware__pb2.OperationReply.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GetOperation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/iot2050.modulefirmware.ModuleFirmware/GetOperation',
+            iot2050__module__firmware__pb2.OperationRequest.SerializeToString,
+            iot2050__module__firmware__pb2.OperationReply.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

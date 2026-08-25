@@ -19,11 +19,14 @@ SRC_URI = " \
     file://iot2050-firmware-update.tmpl \
     file://iot2050-firmware-update-cli \
     file://iot2050_firmware_operation_lock.py \
+    file://iot2050_firmware_operation_store.py \
     file://iot2050-system-firmware.service \
     file://grpc/iot2050-system-firmware.proto \
     file://grpc/iot2050_system_firmware_pb2.py \
     file://grpc/iot2050_system_firmware_pb2_grpc.py \
-    file://custMpk.crt"
+    file://custMpk.crt \
+    file://postinst \
+    file://prerm"
 SRC_URI:append:trust-center = " file://tc-pub.pem"
 SRC_URI:remove:trust-center = " file://custMpk.crt"
 
@@ -50,6 +53,8 @@ do_install() {
         ${D}/usr/lib/python3/dist-packages/iot2050_firmware_update.py
     install -v -m 644 ${WORKDIR}/iot2050_firmware_operation_lock.py \
         ${D}/usr/lib/python3/dist-packages/iot2050_firmware_operation_lock.py
+    install -v -m 644 ${WORKDIR}/iot2050_firmware_operation_store.py \
+        ${D}/usr/lib/python3/dist-packages/iot2050_firmware_operation_store.py
     install -v -m 644 ${WORKDIR}/grpc/iot2050_system_firmware_pb2.py \
         ${D}/usr/lib/python3/dist-packages/iot2050_system_firmware_pb2.py
     install -v -m 644 ${WORKDIR}/grpc/iot2050_system_firmware_pb2_grpc.py \

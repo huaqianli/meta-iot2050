@@ -6,6 +6,8 @@ service ModuleFirmware {
   rpc GetCapabilities (Empty) returns (CapabilitiesReply) {}
   rpc Inspect (InspectRequest) returns (InspectionReply) {}
   rpc Update (UpdateRequest) returns (UpdateReply) {}
+  rpc StartUpdate (UpdateRequest) returns (OperationReply) {}
+  rpc GetOperation (OperationRequest) returns (OperationReply) {}
 }
 
 message Empty {}
@@ -57,4 +59,17 @@ message UpdateReply {
   ChipResult chip_b = 6;
   bool partial_failure = 7;
   bool reboot_required = 8;
+}
+
+message OperationRequest {
+  string operation_id = 1;
+}
+
+message OperationReply {
+  bool ok = 1;
+  string code = 2;
+  string message = 3;
+  string details_json = 4;
+  string operation_id = 5;
+  string state = 6;
 }

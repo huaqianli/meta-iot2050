@@ -11,29 +11,33 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1diot2050-system-firmware.proto\x12\x16iot2050.systemfirmware"\x07\n\x05\x45mpty"<\n\x11CapabilitiesReply\x12\x11\n\tsupported\x18\x01 \x01(\x08\x12\x14\n\x0cdetails_json\x18\x02 \x01(\t"9\n\x0eInspectRequest\x12\x15\n\rfirmware_path\x18\x01 \x01(\t\x12\x10\n\x08pg2_only\x18\x02 \x01(\x08"R\n\x0fInspectionReply\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0c\n\x04code\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0cdetails_json\x18\x04 \x01(\t"\x94\x01\n\rUpdateRequest\x12\x15\n\rfirmware_path\x18\x01 \x01(\t\x12\x12\n\nbackup_dir\x18\x02 \x01(\t\x12\x15\n\rpreserve_list\x18\x03 \x03(\t\x12\r\n\x05reset\x18\x04 \x01(\x08\x12\x10\n\x08pg2_only\x18\x05 \x01(\x08\x12\x11\n\tno_backup\x18\x06 \x01(\x08\x12\r\n\x05force\x18\x07 \x01(\x08"%\n\x0fRollbackRequest\x12\x12\n\nbackup_dir\x18\x01 \x01(\t"P\n\rRollbackReply\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0c\n\x04code\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0cdetails_json\x18\x04 \x01(\t"Q\n\x0eOperationReply\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0c\n\x04code\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0cdetails_json\x18\x04 \x01(\t2\xec\x03\n\x0eSystemFirmware\x12]\n\x0fGetCapabilities\x12\x1d.iot2050.systemfirmware.Empty\x1a).iot2050.systemfirmware.CapabilitiesReply"\x00\x12\\\n\x07Inspect\x12&.iot2050.systemfirmware.InspectRequest\x1a\'.iot2050.systemfirmware.InspectionReply"\x00\x12Y\n\x06Update\x12%.iot2050.systemfirmware.UpdateRequest\x1a&.iot2050.systemfirmware.OperationReply"\x00\x12\x63\n\x0fInspectRollback\x12\'.iot2050.systemfirmware.RollbackRequest\x1a%.iot2050.systemfirmware.RollbackReply"\x00\x12]\n\x08Rollback\x12\'.iot2050.systemfirmware.RollbackRequest\x1a&.iot2050.systemfirmware.OperationReply"\x00\x62\x06proto3')
 
-_globals = globals()
-_builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'iot2050_system_firmware_pb2', _globals)
+
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x1diot2050-system-firmware.proto\x12\x16iot2050.systemfirmware\"\x07\n\x05\x45mpty\"<\n\x11\x43\x61pabilitiesReply\x12\x11\n\tsupported\x18\x01 \x01(\x08\x12\x14\n\x0c\x64\x65tails_json\x18\x02 \x01(\t\"9\n\x0eInspectRequest\x12\x15\n\rfirmware_path\x18\x01 \x01(\t\x12\x10\n\x08pg2_only\x18\x02 \x01(\x08\"R\n\x0fInspectionReply\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0c\x64\x65tails_json\x18\x04 \x01(\t\"\xc2\x01\n\rUpdateRequest\x12\x15\n\rfirmware_path\x18\x01 \x01(\t\x12\x12\n\nbackup_dir\x18\x02 \x01(\t\x12\x15\n\rpreserve_list\x18\x03 \x03(\t\x12\r\n\x05reset\x18\x04 \x01(\x08\x12\x10\n\x08pg2_only\x18\x05 \x01(\x08\x12\x11\n\tno_backup\x18\x06 \x01(\x08\x12\r\n\x05\x66orce\x18\x07 \x01(\x08\x12\x18\n\x10verify_signature\x18\x08 \x01(\x08\x12\x12\n\nlegacy_cli\x18\t \x01(\x08\"9\n\x0fRollbackRequest\x12\x12\n\nbackup_dir\x18\x01 \x01(\t\x12\x12\n\nlegacy_cli\x18\x02 \x01(\x08\"P\n\rRollbackReply\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0c\x64\x65tails_json\x18\x04 \x01(\t\"v\n\x0eOperationReply\x12\n\n\x02ok\x18\x01 \x01(\x08\x12\x0c\n\x04\x63ode\x18\x02 \x01(\t\x12\x0f\n\x07message\x18\x03 \x01(\t\x12\x14\n\x0c\x64\x65tails_json\x18\x04 \x01(\t\x12\x14\n\x0coperation_id\x18\x05 \x01(\t\x12\r\n\x05state\x18\x06 \x01(\t\"(\n\x10OperationRequest\x12\x14\n\x0coperation_id\x18\x01 \x01(\t2\x94\x06\n\x0eSystemFirmware\x12]\n\x0fGetCapabilities\x12\x1d.iot2050.systemfirmware.Empty\x1a).iot2050.systemfirmware.CapabilitiesReply\"\x00\x12\\\n\x07Inspect\x12&.iot2050.systemfirmware.InspectRequest\x1a\'.iot2050.systemfirmware.InspectionReply\"\x00\x12Y\n\x06Update\x12%.iot2050.systemfirmware.UpdateRequest\x1a&.iot2050.systemfirmware.OperationReply\"\x00\x12^\n\x0bStartUpdate\x12%.iot2050.systemfirmware.UpdateRequest\x1a&.iot2050.systemfirmware.OperationReply\"\x00\x12\x62\n\x0cGetOperation\x12(.iot2050.systemfirmware.OperationRequest\x1a&.iot2050.systemfirmware.OperationReply\"\x00\x12\x63\n\x0fInspectRollback\x12\'.iot2050.systemfirmware.RollbackRequest\x1a%.iot2050.systemfirmware.RollbackReply\"\x00\x12]\n\x08Rollback\x12\'.iot2050.systemfirmware.RollbackRequest\x1a&.iot2050.systemfirmware.OperationReply\"\x00\x12\x62\n\rStartRollback\x12\'.iot2050.systemfirmware.RollbackRequest\x1a&.iot2050.systemfirmware.OperationReply\"\x00\x62\x06proto3')
+
+_builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, globals())
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'iot2050_system_firmware_pb2', globals())
 if _descriptor._USE_C_DESCRIPTORS == False:
+
   DESCRIPTOR._options = None
-  _globals['_EMPTY']._serialized_start = 57
-  _globals['_EMPTY']._serialized_end = 64
-  _globals['_CAPABILITIESREPLY']._serialized_start = 66
-  _globals['_CAPABILITIESREPLY']._serialized_end = 126
-  _globals['_INSPECTREQUEST']._serialized_start = 128
-  _globals['_INSPECTREQUEST']._serialized_end = 185
-  _globals['_INSPECTIONREPLY']._serialized_start = 187
-  _globals['_INSPECTIONREPLY']._serialized_end = 269
-  _globals['_UPDATEREQUEST']._serialized_start = 272
-  _globals['_UPDATEREQUEST']._serialized_end = 420
-  _globals['_ROLLBACKREQUEST']._serialized_start = 422
-  _globals['_ROLLBACKREQUEST']._serialized_end = 459
-  _globals['_ROLLBACKREPLY']._serialized_start = 461
-  _globals['_ROLLBACKREPLY']._serialized_end = 541
-  _globals['_OPERATIONREPLY']._serialized_start = 543
-  _globals['_OPERATIONREPLY']._serialized_end = 624
-  _globals['_SYSTEMFIRMWARE']._serialized_start = 627
-  _globals['_SYSTEMFIRMWARE']._serialized_end = 1119
+  _EMPTY._serialized_start=57
+  _EMPTY._serialized_end=64
+  _CAPABILITIESREPLY._serialized_start=66
+  _CAPABILITIESREPLY._serialized_end=126
+  _INSPECTREQUEST._serialized_start=128
+  _INSPECTREQUEST._serialized_end=185
+  _INSPECTIONREPLY._serialized_start=187
+  _INSPECTIONREPLY._serialized_end=269
+  _UPDATEREQUEST._serialized_start=272
+  _UPDATEREQUEST._serialized_end=466
+  _ROLLBACKREQUEST._serialized_start=468
+  _ROLLBACKREQUEST._serialized_end=525
+  _ROLLBACKREPLY._serialized_start=527
+  _ROLLBACKREPLY._serialized_end=607
+  _OPERATIONREPLY._serialized_start=609
+  _OPERATIONREPLY._serialized_end=727
+  _OPERATIONREQUEST._serialized_start=729
+  _OPERATIONREQUEST._serialized_end=769
+  _SYSTEMFIRMWARE._serialized_start=772
+  _SYSTEMFIRMWARE._serialized_end=1560
 # @@protoc_insertion_point(module_scope)

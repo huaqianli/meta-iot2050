@@ -23,6 +23,7 @@ import grpc
 
 from iot2050_system_firmware_pb2 import (
     InspectRequest,
+    OperationRequest,
     RollbackRequest,
     UpdateRequest,
 )
@@ -102,6 +103,30 @@ class SystemFirmwareProvider:
                 "System Firmware service returned invalid response data",
             ) from error
 
+    @staticmethod
+    def _wait_system_operation(stub, operation_id, timeout=3600):
+        deadline = time.monotonic() + timeout
+        while True:
+            response = stub.GetOperation(
+                OperationRequest(operation_id=operation_id), timeout=10)
+            if response.state == "running":
+                if time.monotonic() >= deadline:
+                    raise ManagerError(
+                        "system-update-timeout",
+                        "System firmware update timed out",
+                    )
+                time.sleep(1)
+                continue
+            if not response.ok:
+                raise ManagerError(response.code, response.message)
+            try:
+                return json.loads(response.details_json) if response.details_json else {}
+            except ValueError as error:
+                raise ManagerError(
+                    "system-firmware-invalid-response",
+                    "System Firmware service returned invalid operation data",
+                ) from error
+
     def inspect(self, request):
         path, package = self._resolve(request)
         try:
@@ -180,7 +205,7 @@ class SystemFirmwareProvider:
             progress("checking-compatibility-and-signature")
             channel, stub = self._system_stub()
             try:
-                response = stub.Update(
+                response = stub.StartUpdate(
                     UpdateRequest(
                         firmware_path=str(path),
                         backup_dir=str(self.backup_dir) if self.backup_dir else "",
@@ -188,11 +213,14 @@ class SystemFirmwareProvider:
                         reset=bool(request.get("reset", False)),
                         pg2_only=True,
                     ),
-                    timeout=3600,
+                    timeout=10,
                 )
+                if not response.ok:
+                    raise ManagerError(response.code, response.message)
+                result = self._wait_system_operation(
+                    stub, response.operation_id)
             finally:
                 channel.close()
-            result = self._system_response(response)
         except grpc.RpcError as error:
             raise ManagerError(
                 "system-firmware-service-unavailable",
@@ -218,10 +246,14 @@ class SystemFirmwareProvider:
         try:
             channel, stub = self._system_stub()
             try:
-                response = stub.Rollback(RollbackRequest(), timeout=3600)
+                response = stub.StartRollback(RollbackRequest(), timeout=10)
+                if not response.ok:
+                    raise ManagerError(response.code, response.message)
+                result = self._wait_system_operation(
+                    stub, response.operation_id)
             finally:
                 channel.close()
-            return self._system_response(response)
+            return result
         except grpc.RpcError as error:
             raise ManagerError(
                 "system-firmware-service-unavailable",

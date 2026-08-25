@@ -51,6 +51,28 @@ class InspectionReply(_message.Message):
     slots: _containers.RepeatedCompositeFieldContainer[SlotInspection]
     def __init__(self, ok: bool = ..., code: _Optional[str] = ..., message: _Optional[str] = ..., slots: _Optional[_Iterable[_Union[SlotInspection, _Mapping]]] = ...) -> None: ...
 
+class OperationReply(_message.Message):
+    __slots__ = ["code", "details_json", "message", "ok", "operation_id", "state"]
+    CODE_FIELD_NUMBER: _ClassVar[int]
+    DETAILS_JSON_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    OK_FIELD_NUMBER: _ClassVar[int]
+    OPERATION_ID_FIELD_NUMBER: _ClassVar[int]
+    STATE_FIELD_NUMBER: _ClassVar[int]
+    code: str
+    details_json: str
+    message: str
+    ok: bool
+    operation_id: str
+    state: str
+    def __init__(self, ok: bool = ..., code: _Optional[str] = ..., message: _Optional[str] = ..., details_json: _Optional[str] = ..., operation_id: _Optional[str] = ..., state: _Optional[str] = ...) -> None: ...
+
+class OperationRequest(_message.Message):
+    __slots__ = ["operation_id"]
+    OPERATION_ID_FIELD_NUMBER: _ClassVar[int]
+    operation_id: str
+    def __init__(self, operation_id: _Optional[str] = ...) -> None: ...
+
 class SlotInspection(_message.Message):
     __slots__ = ["available", "chip_a_node", "chip_b_node", "slot"]
     AVAILABLE_FIELD_NUMBER: _ClassVar[int]
