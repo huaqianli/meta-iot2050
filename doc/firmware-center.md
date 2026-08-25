@@ -37,7 +37,7 @@ flowchart LR
     Module[ModuleFirmwareProvider]
     SystemBackend[iot2050_firmware_update<br/>OSPI / U-Boot]
     ControllerRPC[EIOManager gRPC<br/>CheckFWU / UpdateFirmware]
-    ModuleBackend[iot2050_module_firmware_update<br/>EIOFS slotN/fwa and slotN/fwb]
+    ModuleBackend[iot2050-module-firmware-update CLI<br/>EIOFS slotN/fwa and slotN/fwb]
 
     UI -->|cockpit.spawn<br/>superuser: require| CLI
     CLI -->|JSON Lines| Socket
@@ -80,6 +80,8 @@ The legacy `CheckFWU` status values remain unchanged, while its message carries
 the structured inspection result required by the Firmware Center. Module
 Firmware continues to use its existing backend because the current EIO gRPC
 contract does not represent module slots and chip A/B results.
+Module updates use the existing fixed module firmware CLI with machine-readable
+output; the CLI and its backend share the EIO resource lock.
 
 ## Runtime model
 

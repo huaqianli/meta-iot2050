@@ -4,6 +4,8 @@
 
 """Core protocol and provider registry for the IOT2050 firmware manager."""
 
+import contextlib
+import fcntl
 import importlib.util
 import hashlib
 import json
@@ -15,7 +17,6 @@ import sys
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import grpc
@@ -36,6 +37,8 @@ DEFAULT_FIRMWARE_DIR = "/usr/share/iot2050/fwu"
 DEFAULT_FIRMWARE_PATTERN = "IOT2050-FW-Update-PKG-*.tar.xz"
 DEFAULT_MAX_FIRMWARE_SIZE = 64 * 1024 * 1024
 SYSTEM_FIRMWARE_SOCKET = "unix:///run/iot2050/system-firmware.sock"
+TASK_ADMISSION_LOCK = "/run/iot2050/firmware-task-admission.lock"
+TASK_UNIT = "iot2050-firmware-task@{}.service"
 
 
 class ManagerError(Exception):
@@ -392,27 +395,16 @@ class TaskStore:
         except FileNotFoundError as error:
             raise ManagerError("task-not-found", "Task was not found") from error
 
-    def reconcile_interrupted(self):
-        interrupted = []
+    def list(self):
         if not self.task_dir.is_dir():
-            return interrupted
-        for path in self.task_dir.glob("*.json"):
+            return []
+        tasks = []
+        for path in sorted(self.task_dir.glob("*.json")):
             try:
-                task = json.loads(path.read_text(encoding="utf-8"))
-                if task.get("state") != "running":
-                    continue
-                task["state"] = "failed"
-                task["phase"] = "interrupted"
-                task["error"] = {
-                    "code": "manager-interrupted",
-                    "message": "Firmware manager stopped before the task completed",
-                }
-                self.write(task)
-                interrupted.append(task)
-            except (OSError, ValueError, ManagerError):
+                tasks.append(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, ValueError):
                 continue
-        return interrupted
-
+        return tasks
 
 class StagingStore:
     def __init__(self, staging_dir=DEFAULT_STAGING_DIR,
@@ -598,25 +590,65 @@ class StagingStore:
             if metadata.get("claimed_by_task") == task_id:
                 self.release(metadata["token"], task_id)
 
-    def release_stale_claims(self):
-        """Release claims left by a manager process that is no longer running."""
-        for metadata in self.list():
-            owner = metadata.get("claimed_by_task")
-            if owner:
-                self.release(metadata["token"], owner)
+class FirmwareManager:
+    def __init__(self, registry=None, task_store=None, task_runner=None,
+                 staging_store=None):
+        self.registry = registry or ProviderRegistry()
+        self.task_store = task_store or TaskStore()
+        self.staging_store = staging_store or StagingStore()
+        for provider in self.registry.providers.values():
+            bind = getattr(provider, "bind_staging_store", None)
+            if bind is not None:
+                bind(self.staging_store)
+        self.task_runner = task_runner
 
+    @staticmethod
+    @contextlib.contextmanager
+    def _admission_lock():
+        path = Path(TASK_ADMISSION_LOCK)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise ManagerError(
+                    "firmware-busy", "Another firmware operation is starting"
+                ) from error
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
-class TaskRunner:
-    def __init__(self, registry, store, staging_store, executor=None):
-        self.registry = registry
-        self.store = store
-        self.staging_store = staging_store
-        self.executor = executor or ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="firmware-update")
-        self._state_lock = threading.Lock()
-        self._active_task_id = None
-        self._accepting = True
-        self._futures = {}
+    @staticmethod
+    def _worker_unit(task_id):
+        return TASK_UNIT.format(str(uuid.UUID(task_id)))
+
+    @classmethod
+    def _worker_active(cls, task_id):
+        result = subprocess.run(
+            ["systemctl", "is-active", "--quiet", cls._worker_unit(task_id)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return result.returncode == 0
+
+    def _reconcile_running_tasks(self):
+        for task in self.task_store.list():
+            if task.get("state") != "running":
+                continue
+            if self._worker_active(task["id"]):
+                continue
+            task["state"] = "failed"
+            task["phase"] = "interrupted"
+            task["error"] = {
+                "code": "worker-interrupted",
+                "message": "Firmware worker stopped before the task completed",
+            }
+            self.task_store.write(task)
+            for token in task.get("staging_tokens", []):
+                self.staging_store.release(token, task["id"])
 
     @staticmethod
     def _staging_tokens(payload):
@@ -627,10 +659,10 @@ class TaskRunner:
             if (key == "token" or key.startswith("firmware_")) and isinstance(value, str):
                 tokens.append(value)
             elif isinstance(value, dict):
-                tokens.extend(TaskRunner._staging_tokens(value))
+                tokens.extend(FirmwareManager._staging_tokens(value))
         return list(dict.fromkeys(tokens))
 
-    def start(self, provider_name, payload, operation="update"):
+    def _start_task(self, provider_name, payload, operation):
         provider = self.registry.get(provider_name)
         method_name = "rollback" if operation == "rollback" else "start"
         if not hasattr(provider, method_name):
@@ -638,64 +670,80 @@ class TaskRunner:
                 "operation-unsupported",
                 f"Provider '{provider_name}' does not support {operation}",
             )
+
         task_id = str(uuid.uuid4())
         staging_tokens = self._staging_tokens(payload)
-        with self._state_lock:
-            if not self._accepting:
-                raise ManagerError(
-                    "manager-stopping", "Firmware manager is stopping")
-            if self._active_task_id is not None:
+        with self._admission_lock():
+            self._reconcile_running_tasks()
+            if any(task.get("state") == "running" for task in self.task_store.list()):
                 raise ManagerError(
                     "firmware-busy", "Another firmware operation is running")
+
             claimed_tokens = []
             try:
                 for token in staging_tokens:
                     self.staging_store.claim(token, task_id)
                     claimed_tokens.append(token)
+                task = {
+                    "id": task_id,
+                    "provider": provider_name,
+                    "operation": operation,
+                    "payload": payload,
+                    "state": "running",
+                    "phase": "starting",
+                    "result": None,
+                    "error": None,
+                    "staging_tokens": staging_tokens,
+                }
+                self.task_store.write(task)
+                subprocess.run(
+                    ["systemctl", "start", self._worker_unit(task_id)],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as error:
+                task["state"] = "failed"
+                task["phase"] = "failed"
+                task["error"] = {
+                    "code": "worker-start-failed",
+                    "message": "Firmware worker could not be started",
+                }
+                self.task_store.write(task)
+                for token in claimed_tokens:
+                    self.staging_store.release(token, task_id)
+                raise ManagerError(
+                    "worker-start-failed",
+                    "Firmware worker could not be started",
+                ) from error
             except Exception:
                 for token in claimed_tokens:
                     self.staging_store.release(token, task_id)
                 raise
-            self._active_task_id = task_id
-
-        task = {
-            "id": task_id,
-            "provider": provider_name,
-            "operation": operation,
-            "state": "running",
-            "phase": "flashing",
-            "result": None,
-            "error": None,
-            "staging_tokens": staging_tokens,
-        }
-        try:
-            self.store.write(task)
-            future = self.executor.submit(
-                self._run, task, provider, payload, method_name)
-            with self._state_lock:
-                self._futures[task_id] = future
-        except Exception:
-            with self._state_lock:
-                self._active_task_id = None
-            for token in staging_tokens:
-                self.staging_store.release(token, task_id)
-            raise
         return task
 
-    def _run(self, task, provider, payload, method_name):
-        from iot2050_firmware_operation_lock import FirmwareOperationBusy
+    def execute_task(self, task_id):
+        task = self.task_store.read(task_id)
+        if task.get("state") != "running":
+            return task
 
         def progress(phase):
             task["phase"] = phase
             try:
-                self.store.write(task)
+                self.task_store.write(task)
             except OSError:
                 pass
 
         try:
-            self.store.write(task)
+            from iot2050_firmware_operation_lock import FirmwareOperationBusy
+
+            provider = self.registry.get(task["provider"])
+            method_name = (
+                "rollback" if task.get("operation") == "rollback" else "start"
+            )
             task["result"] = getattr(provider, method_name)(
-                payload, progress, self.staging_store)
+                task.get("payload", {}), progress, self.staging_store)
             task["state"] = "succeeded"
             task["phase"] = "succeeded"
         except FirmwareOperationBusy:
@@ -705,64 +753,35 @@ class TaskRunner:
                 "code": "firmware-busy",
                 "message": "Another firmware operation is running",
             }
-        except ManagerError as error:
+        except Exception as error:
             task["state"] = "failed"
             task["phase"] = "failed"
-            task["error"] = {"code": error.code, "message": error.message}
-            if error.details is not None:
-                task["error"]["details"] = error.details
-        except Exception:
-            task["state"] = "failed"
-            task["phase"] = "failed"
-            task["error"] = {
-                "code": "provider-failed",
-                "message": "Firmware operation failed",
-            }
+            if isinstance(error, ManagerError):
+                task["error"] = {
+                    "code": error.code,
+                    "message": error.message,
+                }
+                if error.details is not None:
+                    task["error"]["details"] = error.details
+            else:
+                task["error"] = {
+                    "code": "provider-failed",
+                    "message": "Firmware operation failed",
+                }
         finally:
             try:
-                self.store.write(task)
+                self.task_store.write(task)
             except OSError:
                 pass
-            try:
-                for token in task.get("staging_tokens", []):
-                    try:
-                        if task["state"] == "succeeded":
-                            self.staging_store.consume(token, task["id"])
-                        else:
-                            self.staging_store.release(token, task["id"])
-                    except ManagerError:
-                        pass
-            finally:
-                with self._state_lock:
-                    self._active_task_id = None
-                    self._futures.pop(task["id"], None)
-
-    def shutdown(self):
-        self.stop_accepting()
-        self.executor.shutdown(wait=True, cancel_futures=False)
-
-    def stop_accepting(self):
-        with self._state_lock:
-            self._accepting = False
-
-
-class FirmwareManager:
-    def __init__(self, registry=None, task_store=None, task_runner=None,
-                 staging_store=None):
-        self.registry = registry or ProviderRegistry()
-        self.task_store = task_store or TaskStore()
-        self.staging_store = staging_store or StagingStore()
-        interrupted = self.task_store.reconcile_interrupted()
-        for task in interrupted:
             for token in task.get("staging_tokens", []):
-                self.staging_store.release(token, task["id"])
-        self.staging_store.release_stale_claims()
-        for provider in self.registry.providers.values():
-            bind = getattr(provider, "bind_staging_store", None)
-            if bind is not None:
-                bind(self.staging_store)
-        self.task_runner = task_runner or TaskRunner(
-            self.registry, self.task_store, self.staging_store)
+                try:
+                    if task["state"] == "succeeded":
+                        self.staging_store.consume(token, task["id"])
+                    else:
+                        self.staging_store.release(token, task["id"])
+                except ManagerError:
+                    pass
+        return task
 
     def handle(self, request):
         request_id = request.get("id")
@@ -807,18 +826,20 @@ class FirmwareManager:
                 if not provider_name:
                     raise ManagerError(
                         "invalid-request", "action.start requires a provider")
-                data = self.task_runner.start(provider_name, payload, "update")
+                data = self._start_task(provider_name, payload, "update")
             elif operation == "action.rollback":
                 provider_name = request.get("provider")
                 if not provider_name:
                     raise ManagerError(
                         "invalid-request", "action.rollback requires a provider")
-                data = self.task_runner.start(provider_name, payload, "rollback")
+                data = self._start_task(provider_name, payload, "rollback")
             elif operation == "task.get":
                 task_id = payload.get("task_id")
                 if not task_id:
                     raise ManagerError(
                         "invalid-request", "task.get requires a task_id")
+                with self._admission_lock():
+                    self._reconcile_running_tasks()
                 data = self.task_store.read(task_id)
             elif operation == "staging.list":
                 data = self.staging_store.list()

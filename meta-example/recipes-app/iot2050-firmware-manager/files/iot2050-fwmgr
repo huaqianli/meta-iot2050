@@ -7,25 +7,23 @@
 
 import argparse
 import json
-import socket
 import sys
 import uuid
 
+from iot2050_firmware_manager import (
+    FirmwareManager,
+    ManagerError,
+    ProviderRegistry,
+)
 
-DEFAULT_SOCKET = "/run/iot2050/firmware-manager.sock"
-
-
-def request_manager(request, socket_path=DEFAULT_SOCKET):
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-        client.connect(socket_path)
-        client.sendall((json.dumps(request) + "\n").encode("utf-8"))
-        with client.makefile("r", encoding="utf-8") as response:
-            return json.loads(response.readline())
-
+def load_manager():
+    registry = ProviderRegistry()
+    registry.discover()
+    return FirmwareManager(registry)
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="IOT2050 firmware manager client")
-    parser.add_argument("--socket", default=DEFAULT_SOCKET, help=argparse.SUPPRESS)
+    parser = argparse.ArgumentParser(description="IOT2050 firmware backend")
+    parser.add_argument("--socket", help=argparse.SUPPRESS)
     subparsers = parser.add_subparsers(dest="operation", required=True)
     subparsers.add_parser("capabilities")
     inspect_parser = subparsers.add_parser("inspect")
@@ -48,7 +46,18 @@ def main(argv=None):
     stage_parser = subparsers.add_parser("stage")
     stage_parser.add_argument("path")
     stage_parser.add_argument("--name")
+    worker_parser = subparsers.add_parser("worker", help=argparse.SUPPRESS)
+    worker_parser.add_argument("task_id")
     args = parser.parse_args(argv)
+
+    manager = load_manager()
+    if args.operation == "worker":
+        try:
+            task = manager.execute_task(args.task_id)
+        except ManagerError as error:
+            print(error.message, file=sys.stderr)
+            return 1
+        return 0 if task.get("state") == "succeeded" else 1
 
     try:
         payload = json.loads(getattr(args, "payload", "{}"))
@@ -83,8 +92,8 @@ def main(argv=None):
             request["payload"] = {"path": args.path}
             if args.name:
                 request["payload"]["name"] = args.name
-        response = request_manager(request, args.socket)
-    except (OSError, ValueError) as error:
+        response = manager.handle(request)
+    except (OSError, ValueError, ManagerError) as error:
         print(json.dumps({
             "v": 1,
             "id": None,
