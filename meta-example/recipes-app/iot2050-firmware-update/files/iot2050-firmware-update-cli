@@ -4,13 +4,143 @@
 #
 # SPDX-License-Identifier: MIT
 #
-# This small wrapper keeps /usr/sbin/iot2050-firmware-update as the stable
-# user-facing CLI while the generated module provides reusable firmware
-# operations for the Firmware Manager.
+"""Backward-compatible CLI client for the System Firmware gRPC service."""
 
+import argparse
+import os
+import textwrap
 import sys
 
-from iot2050_firmware_update import main
+import grpc
+
+from iot2050_system_firmware_pb2 import RollbackRequest, UpdateRequest
+from iot2050_system_firmware_pb2_grpc import SystemFirmwareStub
+
+
+SOCKET_TARGET = "unix:///run/iot2050/system-firmware.sock"
+EXIT_CODES = {
+    "system-firmware-3": 3,
+    "system-firmware-4": 4,
+    "system-firmware-5": 5,
+    "system-firmware-7": 7,
+    "system-firmware-9": 9,
+    "system-firmware-10": 10,
+    "system-firmware-11": 11,
+}
+
+
+def parser():
+    description = textwrap.dedent("""\
+        Update OSPI firmware through the System Firmware service.
+
+        The command name and legacy options are retained for compatibility.
+        Hardware operations are performed by the privileged gRPC service.
+        """)
+    result = argparse.ArgumentParser(
+        description=description,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    group = result.add_mutually_exclusive_group()
+    result.add_argument("firmware", nargs="?", metavar="FIRMWARE")
+    group.add_argument("-f", "--force", action="store_true",
+                       help="Force update, ignore package checks")
+    group.add_argument("-p", "--preserve_list", type=str,
+                       help="Comma-separated U-Boot environment variables")
+    group.add_argument("-r", "--reset", action="store_true",
+                       help="Reset the U-Boot environment")
+    group.add_argument("-b", "--rollback", action="store_true",
+                       help="Rollback to the previous firmware")
+    result.add_argument("-v", "--version", action="version",
+                        version="%(prog)s version: ${PV}")
+    result.add_argument("--verify", action="store_true",
+                        help="Enforce firmware signature verification")
+    backup_group = result.add_mutually_exclusive_group()
+    backup_group.add_argument("-n", "--no-backup", action="store_true",
+                              help="Do not generate a firmware backup")
+    backup_group.add_argument("-d", "--backup-dir", nargs=1,
+                              help="Specify the firmware backup directory")
+    result.add_argument("-q", "--quiet", action="store_true",
+                        help="Do not prompt or reboot automatically")
+    return result
+
+
+def confirm(message, quiet):
+    if quiet:
+        return True
+    try:
+        return input(f"{message} (y/N)? ").strip().lower() == "y"
+    except EOFError:
+        return False
+
+
+def result_code(response, rollback=False):
+    if response.ok:
+        return 1 if rollback else 0
+    return EXIT_CODES.get(response.code, 8)
+
+
+def absolute_path(value):
+    return os.path.abspath(value) if value else ""
+
+
+def main(argv=None):
+    args = parser().parse_args(argv[1:] if argv else None)
+    if args.force and (args.no_backup or args.backup_dir or args.verify):
+        parser().error("argument -f/--force is not allowed with -n, -d, or --verify")
+    if not args.rollback and not args.firmware:
+        print("No firmware or action specified. A firmware file is required.",
+              file=sys.stderr)
+        return 2
+    if not confirm("\nWarning: Update may render the device unbootable. Continue",
+                   args.quiet):
+        return 6
+    if args.reset and not confirm(
+            "\nWarning: All U-Boot environment variables will be reset. Continue",
+            args.quiet):
+        return 6
+
+    channel = grpc.insecure_channel(SOCKET_TARGET)
+    stub = SystemFirmwareStub(channel)
+    try:
+        if args.rollback:
+            response = stub.Rollback(RollbackRequest(
+                backup_dir=absolute_path(
+                    args.backup_dir[0] if args.backup_dir else ""),
+            ))
+        else:
+            preserve_list = [
+                item.strip() for item in (args.preserve_list or "").split(",")
+                if item.strip()
+            ]
+            response = stub.Update(UpdateRequest(
+                firmware_path=absolute_path(args.firmware),
+                backup_dir=absolute_path(
+                    args.backup_dir[0] if args.backup_dir else ""),
+                preserve_list=preserve_list,
+                reset=args.reset,
+                no_backup=args.no_backup,
+                force=args.force,
+            ), timeout=3600)
+    except grpc.RpcError as error:
+        print(f"System Firmware service unavailable: {error.details()}",
+              file=sys.stderr)
+        return 8
+    finally:
+        channel.close()
+
+    if not response.ok:
+        print(response.message, file=sys.stderr)
+        return result_code(response, args.rollback)
+    print(response.message)
+    if not args.quiet:
+        if confirm("\nWarning: Completed. Please reboot the device. Reboot now",
+                   False):
+            try:
+                import os
+                os.system("reboot")
+            except OSError:
+                pass
+    return result_code(response, args.rollback)
 
 
 if __name__ == '__main__':

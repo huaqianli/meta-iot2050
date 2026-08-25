@@ -18,6 +18,15 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import grpc
+
+from iot2050_system_firmware_pb2 import (
+    InspectRequest,
+    RollbackRequest,
+    UpdateRequest,
+)
+from iot2050_system_firmware_pb2_grpc import SystemFirmwareStub
+
 
 PROTOCOL_VERSION = 1
 DEFAULT_PROVIDER_DIR = "/usr/lib/iot2050/firmware-manager/providers.d"
@@ -26,6 +35,7 @@ DEFAULT_STAGING_DIR = "/var/lib/iot2050-fwmgr/staging"
 DEFAULT_FIRMWARE_DIR = "/usr/share/iot2050/fwu"
 DEFAULT_FIRMWARE_PATTERN = "IOT2050-FW-Update-PKG-*.tar.xz"
 DEFAULT_MAX_FIRMWARE_SIZE = 64 * 1024 * 1024
+SYSTEM_FIRMWARE_SOCKET = "unix:///run/iot2050/system-firmware.sock"
 
 
 class ManagerError(Exception):
@@ -72,18 +82,40 @@ class SystemFirmwareProvider:
         )
         return candidates[-1] if candidates else None
 
+    @staticmethod
+    def _system_stub():
+        channel = grpc.insecure_channel(SYSTEM_FIRMWARE_SOCKET)
+        return channel, SystemFirmwareStub(channel)
+
+    @staticmethod
+    def _system_response(response):
+        if not response.ok:
+            raise ManagerError(response.code, response.message)
+        try:
+            return json.loads(response.details_json) if response.details_json else {}
+        except ValueError as error:
+            raise ManagerError(
+                "system-firmware-invalid-response",
+                "System Firmware service returned invalid response data",
+            ) from error
+
     def inspect(self, request):
         path, package = self._resolve(request)
         try:
-            from iot2050_firmware_update import inspect_system_firmware
-            details = inspect_system_firmware(path, pg2_only=True)
-        except ImportError as error:
+            channel, stub = self._system_stub()
+            try:
+                response = stub.Inspect(
+                    InspectRequest(firmware_path=str(path), pg2_only=True),
+                    timeout=10,
+                )
+            finally:
+                channel.close()
+            details = self._system_response(response)
+        except grpc.RpcError as error:
             raise ManagerError(
-                "system-updater-unavailable",
-                "System firmware updater is unavailable",
+                "system-firmware-service-unavailable",
+                "System Firmware service is unavailable",
             ) from error
-        except Exception as error:
-            self._raise_update_error(error)
         result = {**details, "package": package}
         if request.get("device_info"):
             result["device_info"] = self._device_info()
@@ -142,48 +174,56 @@ class SystemFirmwareProvider:
     def start(self, request, progress, staging_store):
         path, package = self._resolve(request, staging_store)
         try:
-            from iot2050_firmware_update import update_system_firmware
             progress("checking-compatibility-and-signature")
-            result = update_system_firmware(
-                path,
-                str(self.backup_dir) if self.backup_dir else None,
-                preserve_list=request.get("preserve_list"),
-                reset=bool(request.get("reset", False)),
-                progress=progress,
-                pg2_only=True,
-            )
-        except ImportError as error:
+            channel, stub = self._system_stub()
+            try:
+                response = stub.Update(
+                    UpdateRequest(
+                        firmware_path=str(path),
+                        backup_dir=str(self.backup_dir) if self.backup_dir else "",
+                        preserve_list=request.get("preserve_list") or [],
+                        reset=bool(request.get("reset", False)),
+                        pg2_only=True,
+                    ),
+                    timeout=3600,
+                )
+            finally:
+                channel.close()
+            result = self._system_response(response)
+        except grpc.RpcError as error:
             raise ManagerError(
-                "system-updater-unavailable",
-                "System firmware updater is unavailable",
+                "system-firmware-service-unavailable",
+                "System Firmware service is unavailable",
             ) from error
-        except Exception as error:
-            self._raise_update_error(error)
         return {**result, "package": package}
 
     def inspect_rollback(self, request):
         try:
-            from iot2050_firmware_update import inspect_system_rollback
-            return inspect_system_rollback()
-        except ImportError as error:
+            channel, stub = self._system_stub()
+            try:
+                response = stub.InspectRollback(RollbackRequest(), timeout=10)
+            finally:
+                channel.close()
+            return self._system_response(response)
+        except grpc.RpcError as error:
             raise ManagerError(
-                "system-updater-unavailable",
-                "System firmware updater is unavailable",
+                "system-firmware-service-unavailable",
+                "System Firmware service is unavailable",
             ) from error
-        except Exception as error:
-            self._raise_update_error(error)
 
     def rollback(self, request, progress, staging_store):
         try:
-            from iot2050_firmware_update import rollback_system_firmware
-            return rollback_system_firmware(progress=progress)
-        except ImportError as error:
+            channel, stub = self._system_stub()
+            try:
+                response = stub.Rollback(RollbackRequest(), timeout=3600)
+            finally:
+                channel.close()
+            return self._system_response(response)
+        except grpc.RpcError as error:
             raise ManagerError(
-                "system-updater-unavailable",
-                "System firmware updater is unavailable",
+                "system-firmware-service-unavailable",
+                "System Firmware service is unavailable",
             ) from error
-        except Exception as error:
-            self._raise_update_error(error)
 
     def _resolve(self, request, staging_store=None):
         if request.get("source") == "image-default":

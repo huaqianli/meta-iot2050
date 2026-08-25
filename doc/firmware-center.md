@@ -11,7 +11,7 @@ but not package formats or flashing logic.
 | --- | --- | --- |
 | Cockpit package | `/usr/share/cockpit/iot2050-firmware` | File selection, inspection results, confirmation, and task status |
 | Local client | `/usr/sbin/iot2050-fwmgr` | JSON command adapter used by Cockpit with `superuser: require` |
-| Manager | `/usr/lib/iot2050/firmware-manager` | Provider discovery, staging, task persistence, and hardware-operation locking |
+| Manager | `/usr/lib/iot2050/firmware-manager` | Provider discovery, staging, and task persistence |
 | Manager socket | `/run/iot2050/firmware-manager.sock` | Root-only, systemd-activated JSON Lines IPC |
 | SM providers | `iot2050-firmware-provider-sm` | Controller and module adapters installed only with SM support |
 
@@ -34,7 +34,7 @@ flowchart LR
     Controller[EIOControllerProvider]
     Module[ModuleFirmwareProvider]
     SystemBackend[iot2050_firmware_update<br/>OSPI / U-Boot]
-    ControllerBackend[iot2050_eio_fwu<br/>EIO controller]
+    ControllerRPC[EIOManager gRPC<br/>CheckFWU / UpdateFirmware]
     ModuleBackend[iot2050_module_firmware_update<br/>EIOFS slotN/fwa and slotN/fwb]
 
     UI -->|cockpit.spawn<br/>superuser: require| CLI
@@ -46,7 +46,7 @@ flowchart LR
     Manager --> Controller
     Manager --> Module
     System --> SystemBackend
-    Controller --> ControllerBackend
+    Controller --> ControllerRPC
     Module --> ModuleBackend
 ```
 
@@ -70,6 +70,12 @@ and EIO module firmware have different flashing implementations, but share
 the same local privilege boundary, operation lifecycle, runtime availability
 checks, progress reporting, and user-facing result format.
 
+EIO Controller inspection and updates use the existing EIOManager gRPC service.
+The legacy `CheckFWU` status values remain unchanged, while its message carries
+the structured inspection result required by the Firmware Center. Module
+Firmware continues to use its existing backend because the current EIO gRPC
+contract does not represent module slots and chip A/B results.
+
 ## Runtime model
 
 The protocol version is `1`. Each request and response occupies one JSON line.
@@ -85,8 +91,11 @@ The currently supported operations are:
 - `action.rollback`: restore the shared local System Firmware backup.
 - `staging.list`, `staging.delete`, `staging.gc`: operator maintenance of uploaded artifacts.
 
-Only one hardware operation can run at a time. A second start request is
-rejected with `firmware-busy`. Tasks transition through `running` and
+The manager currently accepts one task at a time, while the backend resource
+locks also protect direct CLI and service entry points. System Firmware uses a
+separate resource from EIO Controller and Module; the two EIO operations share
+one resource. A competing operation is rejected with `firmware-busy`. Tasks
+transition through `running` and
 `succeeded` or `failed`. A task left in `running` after manager restart is
 marked `failed/interrupted`; automatic flash resume is intentionally not
 attempted.
@@ -136,10 +145,9 @@ Managed System Firmware updates have stricter behavior than the legacy CLI:
   traversal, directories, symbolic links, hard links, and device nodes are
   rejected.
 - Member count and total extracted size are bounded.
-- CLI and manager use the same canonical backup file at
-  `/var/lib/iot2050/firmware-update/rollback_backup_fw.tar`. An explicit CLI
-  `--backup-dir` remains a compatibility override, but is not another default
-  backup pool.
+- CLI and manager use the same process-home backup file at
+  `${HOME}/.rollback_fw/rollback_backup_fw.tar`. An explicit CLI
+  `--backup-dir` remains a compatibility override.
 - Web rollback uses that local backup and verifies its SHA-256 metadata before
   reusing the existing CLI rollback flashing semantics.
 - The managed path never prompts, retries a failed flash, or reboots.

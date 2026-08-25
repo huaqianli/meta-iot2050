@@ -102,8 +102,10 @@ preserved list from cli, this would not use the preserved env variable in the
 """
 
 import argparse
+import concurrent.futures
 import datetime
 import fcntl
+import glob
 import hashlib
 import io
 import json
@@ -116,6 +118,7 @@ import time
 import tarfile
 import textwrap
 import tempfile
+from pathlib import Path
 from packaging import version
 from abc import ABC, abstractmethod
 from ctypes import *
@@ -1213,9 +1216,10 @@ def inspect_system_firmware(firmware_path, public_key_path=None, pg2_only=False)
             package.close()
 
 
-def update_system_firmware(firmware_path, backup_dir,
+def update_system_firmware(firmware_path, backup_dir=None,
                            preserve_list=None, reset=False, progress=None,
-                           public_key_path=None, pg2_only=False):
+                           public_key_path=None, pg2_only=False,
+                           backup=True):
     """Perform one signed update attempt without prompts, retry or reboot."""
     interactor = NonInteractiveInterface(progress)
     with firmware_operation_lock(resource="system"):
@@ -1238,7 +1242,8 @@ def update_system_firmware(firmware_path, backup_dir,
                     package, backup_dir, interactor,
                     rollback=False, reset=reset, verify_signature=True,
                 )
-                updater.backup()
+                if backup:
+                    updater.backup()
                 progress and progress("flashing-system")
                 updater.update()
                 return {
@@ -1251,6 +1256,199 @@ def update_system_firmware(firmware_path, backup_dir,
                 if updater is not None:
                     updater.close()
                 package.close()
+
+
+def force_update_system_firmware(firmware_path, progress=None):
+    """Perform the legacy raw U-Boot update without a package backup."""
+    interactor = NonInteractiveInterface(progress)
+    with firmware_operation_lock(resource="system"):
+        with open(firmware_path, "rb") as firmware:
+            updater = ForceUpdate(interactor, firmware)
+            progress and progress("flashing-system")
+            updater.update()
+    return {
+        "mode": "force",
+        "reboot_required": True,
+    }
+
+
+def serve_system_firmware_grpc():
+    """Serve System Firmware operations from this single backend module."""
+    import grpc
+    from iot2050_system_firmware_pb2 import (
+        CapabilitiesReply,
+        Empty,
+        InspectionReply,
+        OperationReply,
+        RollbackReply,
+    )
+    from iot2050_system_firmware_pb2_grpc import (
+        SystemFirmwareServicer,
+        add_SystemFirmwareServicer_to_server,
+    )
+
+    socket_path = "/run/iot2050/system-firmware.sock"
+    firmware_dir = "/usr/share/iot2050/fwu"
+    firmware_pattern = "IOT2050-FW-Update-PKG-*.tar.xz"
+    max_firmware_size = 64 * 1024 * 1024
+
+    class Service(SystemFirmwareServicer):
+        @staticmethod
+        def _json(value):
+            return json.dumps(value or {}, separators=(",", ":"), default=str)
+
+        @staticmethod
+        def _message(error):
+            messages = {
+                3: "System firmware backup failed",
+                5: "System firmware flashing or readback failed",
+                7: "The firmware package is not compatible with this device",
+                9: "The firmware signature is missing",
+                10: "The firmware verification key is unavailable",
+                11: "The firmware signature is invalid",
+            }
+            return messages.get(
+                getattr(error, "code", None),
+                "System firmware operation failed",
+            )
+
+        @classmethod
+        def _failure(cls, error):
+            return {
+                "ok": False,
+                "code": f"system-firmware-{getattr(error, 'code', 'failed')}",
+                "message": cls._message(error),
+                "details_json": "",
+            }
+
+        @staticmethod
+        def _firmware_path(requested):
+            path = requested
+            if not path:
+                candidates = sorted(
+                    item for item in glob.glob(
+                        os.path.join(firmware_dir, firmware_pattern)
+                    )
+                    if os.path.isfile(item) and not os.path.islink(item)
+                )
+                path = candidates[-1] if candidates else None
+            if path is None:
+                raise ValueError("The system firmware package is unavailable")
+            if os.path.islink(path) or not os.path.isfile(path):
+                raise ValueError(
+                    "The system firmware package must be a regular file")
+            if os.path.getsize(path) > max_firmware_size:
+                raise ValueError("The system firmware package is too large")
+            return path
+
+        @staticmethod
+        def _response(response):
+            return response
+
+        def GetCapabilities(self, request: Empty, context):
+            return CapabilitiesReply(
+                supported=True,
+                details_json=self._json({
+                    "provider": "system",
+                    "operations": ["inspect", "update", "rollback"],
+                    "backup": DEFAULT_ROLLBACK_DIR,
+                    "requires_signature": True,
+                }),
+            )
+
+        def Inspect(self, request, context):
+            try:
+                details = inspect_system_firmware(
+                    self._firmware_path(request.firmware_path),
+                    pg2_only=request.pg2_only,
+                )
+                return InspectionReply(
+                    ok=True,
+                    code="ok",
+                    message="System firmware inspection completed",
+                    details_json=self._json(details),
+                )
+            except Exception as error:
+                return InspectionReply(**self._failure(error))
+
+        def Update(self, request, context):
+            try:
+                firmware_path = self._firmware_path(request.firmware_path)
+                if request.force:
+                    details = force_update_system_firmware(firmware_path)
+                else:
+                    details = update_system_firmware(
+                        firmware_path,
+                        request.backup_dir or None,
+                        preserve_list=list(request.preserve_list) or None,
+                        reset=request.reset,
+                        pg2_only=request.pg2_only,
+                        backup=not request.no_backup,
+                    )
+                return OperationReply(
+                    ok=True,
+                    code="ok",
+                    message="System firmware update completed",
+                    details_json=self._json(details),
+                )
+            except Exception as error:
+                return OperationReply(**self._failure(error))
+
+        def InspectRollback(self, request, context):
+            try:
+                details = inspect_system_rollback(request.backup_dir or None)
+                return RollbackReply(
+                    ok=True,
+                    code="ok",
+                    message="System firmware rollback inspection completed",
+                    details_json=self._json(details),
+                )
+            except Exception as error:
+                return RollbackReply(**self._failure(error))
+
+        def Rollback(self, request, context):
+            try:
+                details = rollback_system_firmware(request.backup_dir or None)
+                return OperationReply(
+                    ok=True,
+                    code="ok",
+                    message="System firmware rollback completed",
+                    details_json=self._json(details),
+                )
+            except Exception as error:
+                return OperationReply(**self._failure(error))
+
+    socket_file = Path(socket_path)
+    socket_file.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        socket_file.unlink()
+    except FileNotFoundError:
+        pass
+
+    server = grpc.server(
+        concurrent.futures.ThreadPoolExecutor(max_workers=1),
+        options=(
+            ("grpc.max_receive_message_length", max_firmware_size),
+            ("grpc.max_send_message_length", max_firmware_size),
+        ),
+    )
+    add_SystemFirmwareServicer_to_server(Service(), server)
+    if server.add_insecure_port(f"unix://{socket_path}") == 0:
+        raise RuntimeError("Unable to bind the System Firmware gRPC socket")
+    old_umask = os.umask(0o177)
+    try:
+        server.start()
+        os.chmod(socket_file, 0o600)
+    finally:
+        os.umask(old_umask)
+    try:
+        server.wait_for_termination()
+    finally:
+        server.stop(grace=0)
+        try:
+            socket_file.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def inspect_system_rollback(backup_dir=None):
@@ -1346,6 +1544,10 @@ def perform_hardware_update(updater, args, interactor):
 __version__ = "${PV}"
 def main(argv):
     """The main function"""
+
+    if argv and len(argv) == 2 and argv[1] == "--grpc-server":
+        serve_system_firmware_grpc()
+        return ErrorCode.SUCCESS.value
 
     description=textwrap.dedent('''\
         Update OSPI firmware.
