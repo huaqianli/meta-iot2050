@@ -12,11 +12,17 @@ set -eu
 
 STATE_DIR=/var/lib/iot2050-firstboot-onboarding
 COMPLETE_MARKER="$STATE_DIR/complete"
+ONBOARDING_ENTRY=/usr/bin/iot2050-firstboot-onboarding
+ONBOARDING_SERVICE=/usr/lib/systemd/system/iot2050-firstboot-onboarding.service
 MODE_DIR=/usr/lib/iot2050/web-gateway/nginx
 LINK_DIR=/etc/nginx/conf.d/iot2050-web-gateway-mode
 LINK_PATH="$LINK_DIR/current.conf"
 MODE="${1:-auto}"
 RELOAD_NGINX=1
+
+onboarding_available() {
+	[ -x "$ONBOARDING_ENTRY" ] && [ -f "$ONBOARDING_SERVICE" ]
+}
 
 if [ "${2:-}" = "--no-reload" ] || [ "$MODE" = "--no-reload" ]; then
 	RELOAD_NGINX=0
@@ -27,11 +33,19 @@ case "$MODE" in
 	auto)
 		if [ -f "$COMPLETE_MARKER" ]; then
 			MODE=runtime
-		else
+		elif onboarding_available; then
 			MODE=onboarding
+		else
+			MODE=runtime
 		fi
 		;;
-	onboarding|runtime)
+	onboarding)
+		if ! onboarding_available; then
+			echo "Onboarding service is not installed" >&2
+			exit 1
+		fi
+		;;
+	runtime)
 		;;
 	*)
 		echo "Unsupported gateway mode: $MODE" >&2
