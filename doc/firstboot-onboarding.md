@@ -1,119 +1,62 @@
-# First-Boot Onboarding
+# First-boot onboarding implementation notes
 
-This note captures the current IOT2050 first-boot onboarding control flow and
-the handoff from the temporary onboarding service to the nginx-fronted Cockpit
-runtime.
+This document records the implementation contract for developers and
+maintainers. End-user guidance is shown locally through the onboarding page's
+field hints, password rules, and error messages.
 
-For the broader design covering all current implementations under
-[meta-example/recipes-webui](../meta-example/recipes-webui), see
-[doc/recipes-webui.md](recipes-webui.md).
+## Runtime flow
 
-## Runtime Topology
+The Product example image starts the onboarding service only while its
+completion marker is absent:
 
-- External entry point: nginx on ports `80` and `443`
-- HTTP on `80` redirects to HTTPS on `443`
-- Onboarding backend: Node.js HTTP service on `127.0.0.1:9080`
-- Cockpit backend: loopback-only `cockpit.socket` on `127.0.0.1:9090`
-- Runtime entrypoint: nginx proxies `/` to Cockpit only
+- nginx terminates HTTPS and proxies the onboarding mode to `127.0.0.1:9080`;
+- the Node.js service serves the local page and its API;
+- the Python helper applies the hostname and creates the first administrator;
+- the service starts Cockpit and waits for its loopback login endpoint;
+- nginx switches to runtime mode and the completion marker is written.
 
-At the time of writing, the runtime nginx configuration no longer exposes a
-separate `/webui` reverse-proxy path. The public runtime interface is Cockpit
-at `/`, where post-login plugins such as Extended IO can be loaded.
+The marker is `/var/lib/iot2050-firstboot-onboarding/complete`. The systemd
+unit uses `ConditionPathExists=!` and `StateDirectory` so the onboarding state
+is persistent.
 
-## Proxy Logic Diagram
+The Dev compatibility fragment does not install this service. In that profile,
+the gateway selects the Cockpit runtime directly and the preconfigured
+development accounts are used instead.
 
-```mermaid
-flowchart LR
-  Client[Browser Client] -->|HTTPS 443| Nginx[nginx Gateway]
-  Client -->|HTTP 80| Redirect[Redirect to HTTPS]
-  Redirect --> Nginx
+## API boundary
 
-  Nginx --> Mode{Mode selected by current.conf}
-  Mode -->|onboarding| Onboarding[Onboarding Service\n127.0.0.1:9080]
-  Mode -->|runtime| Cockpit[Cockpit\n127.0.0.1:9090]
+The onboarding service exposes only the local setup endpoints required by the
+page:
 
-  Prep[Prepare Hook] --> Cert[Ensure certificate]
-  Prep --> Select[Refresh mode symlink]
-  Prep --> Nginx
+- `GET /api/status` returns current setup status and hostname information;
+- `POST /api/complete` validates the submitted account and hostname data;
+- static assets and localized bundles are served from the package directory.
 
-  Cockpit --> WS[for-tls-proxy adjustment]
-```
+The service is loopback-only. nginx is the public HTTPS boundary and no
+onboarding endpoint is exposed as a separate public port.
 
-The diagram shows:
+## Account and hostname rules
 
-- nginx as the only public HTTPS entrypoint
-- the mode symlink selecting onboarding or runtime behavior
-- onboarding proxied to `127.0.0.1:9080`
-- runtime proxied to Cockpit on `127.0.0.1:9090`
-- startup hooks that ensure certs and refresh the active mode
-- Cockpit proxy adjustments required for post-login access
+The helper rejects `root` as an onboarding username and validates the username
+and hostname before applying changes. It creates a named account and adds only
+administrative groups that exist on the image. Password acceptance is finally
+decided by the system PAM policy; the page performs matching local checks to
+provide immediate feedback.
 
-## Onboarding Flow Diagram
+`useradd`, `chpasswd`, `userdel`, `hostnamectl`, and `hostname` are retained as
+system interfaces. They are invoked with argument vectors rather than shell
+command strings. The helper does not print passwords or raw password-command
+errors, and removes the newly created account if password setup fails.
 
-```mermaid
-flowchart TD
-  A[Boot] --> B{Completion marker exists?}
-  B -->|No| C[Expose onboarding at /]
-  B -->|Yes| R[Expose Cockpit runtime at /]
+## Security invariants
 
-  C --> D[Frontend loads status]
-  D --> E[User submits hostname and account]
-  E --> F[Server validates payload]
-  F --> G[Apply hostname and create account]
-  G --> H[Enable and start Cockpit]
-  H --> I{Cockpit login endpoint ready?}
-  I -->|No| H
-  I -->|Yes| J[Switch nginx to runtime mode]
-  J --> K[Write completion marker]
-  K --> L[Disable onboarding service]
-  L --> M[Return redirect URL]
-  M --> R
-```
+- The root account is not provisioned or unlocked by onboarding.
+- The completion marker is written only after Cockpit is ready and nginx has
+  switched to runtime mode.
+- Passwords are accepted only through the protected request path and are not
+  persisted in onboarding state.
+- Failed account setup returns editable field errors so the operator can retry.
+- Runtime Cockpit access remains behind nginx HTTPS and Cockpit authentication.
 
-The flow covers:
-
-- first access while the gateway is in onboarding mode
-- frontend bootstrap through `GET /api/status`
-- client-side and server-side validation around `POST /api/complete`
-- user creation and hostname application via the Python helper
-- Cockpit startup and readiness probing on `127.0.0.1:9090/cockpit/login`
-- gateway mode switch from `onboarding` to `runtime`
-- redirect to Cockpit and the redirect fallback behavior
-
-## Control Flow Summary
-
-1. On boot, the gateway selector checks whether the completion marker exists.
-2. Without the marker, nginx exposes the onboarding service at `/`.
-3. The frontend loads status information and collects hostname and user input.
-4. The backend validates the payload and invokes the apply helper.
-5. The helper updates the hostname, creates the non-root account, and stores a
-   request snapshot.
-6. The backend enables and starts Cockpit, then waits until the login endpoint
-   responds.
-7. After Cockpit is ready, the backend switches nginx into runtime mode,
-   writes the completion marker, disables the onboarding service, and returns a
-   redirect URL.
-8. The browser navigates to Cockpit at `/`.
-
-## Persistent State
-
-- `/var/lib/iot2050-firstboot-onboarding/complete`
-  Marks onboarding as finished and prevents the service from starting again.
-- `/var/lib/iot2050-firstboot-onboarding/last-request.json`
-  Stores the last apply attempt and result for diagnostics.
-
-## Related Implementation
-
-- Broader architecture and package overview: [doc/recipes-webui.md](recipes-webui.md)
-- Frontend logic: [meta-example/recipes-webui/iot2050-firstboot-onboarding/files/www/app.js](../meta-example/recipes-webui/iot2050-firstboot-onboarding/files/www/app.js)
-- HTTP server and runtime-switch logic: [meta-example/recipes-webui/iot2050-firstboot-onboarding/files/iot2050-firstboot-onboarding.js](../meta-example/recipes-webui/iot2050-firstboot-onboarding/files/iot2050-firstboot-onboarding.js)
-- User and hostname application helper: [meta-example/recipes-webui/iot2050-firstboot-onboarding/files/iot2050-firstboot-apply-user.py](../meta-example/recipes-webui/iot2050-firstboot-onboarding/files/iot2050-firstboot-apply-user.py)
-- Service unit: [meta-example/recipes-webui/iot2050-firstboot-onboarding/files/iot2050-firstboot-onboarding.service](../meta-example/recipes-webui/iot2050-firstboot-onboarding/files/iot2050-firstboot-onboarding.service)
-- nginx gateway package: [meta-example/recipes-webui/iot2050-web-gateway-nginx/iot2050-web-gateway-nginx_1.0.0.bb](../meta-example/recipes-webui/iot2050-web-gateway-nginx/iot2050-web-gateway-nginx_1.0.0.bb)
-
-## Retest Notes
-
-- To re-arm onboarding for another test, remove
-  `/var/lib/iot2050-firstboot-onboarding/complete`.
-- If onboarding is inactive after a previous successful run, that is expected
-  because the systemd unit uses `ConditionPathExists=!.../complete`.
+Keep page-specific instructions and recovery messages in the onboarding UI.
+Keep this file limited to stable package, API, and security contracts.

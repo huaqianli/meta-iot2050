@@ -5,8 +5,8 @@
 > `iot2050-firmware-update`, and adapt/restore the U-Boot environment as needed.
 
 ## Flashing Images
-There are two primary methods for flashing the `.wic` image file to an SD card or
-other storages.
+There are two primary methods for flashing the `.wic` image file to an SD card
+or other storage.
 
 ### Using `bmaptool` (Recommended)
 For the fastest and safest flashing, use `bmaptool`. This tool provides
@@ -23,14 +23,33 @@ sudo dd if=<image>.wic of=/dev/mmcblk0 bs=4M oflag=sync status=progress
 ```
 
 ## Boot Networking
-- **Example image**: static `192.168.200.1` on the first Ethernet port + DHCP
-  on the second interface.
+- **Example image**: static `192.168.200.1/24` on `eno1`, plus a cellular
+  (4G) connection. No other Ethernet port is preconfigured.
 - **Base BSP image**: no network preconfigured (must be configured manually
   via the UART console).
 
-**Credentials (default)**: user `root` (no separate password-protected user);
-you will be prompted to change the password on first login. This should be
-done immediately for any network-connected deployment.
+## Login Security Operations
+
+Product password authentication enforces a failed-login lockout baseline.
+Failed-login counters are stored under `/var/lib/faillock` and survive service
+restart and reboot.
+
+To inspect or clear the failed-login state of a named account on the device,
+use the standard `faillock` tooling:
+```sh
+sudo faillock --user <user>
+sudo faillock --user <user> --reset
+```
+
+For account lifecycle operations (status, disable, enable, delete), use the
+Cockpit Accounts page as the primary interface.
+
+A development compatibility profile (`kas/opt/dev.yml`) restores legacy
+credentials and direct root SSH for local development only; it is not part of
+the shipped Product image.
+
+Use Cockpit and direct `faillock` commands for targeted lifecycle and lockout
+operations on the device.
 
 ## eMMC Installation
 This installation flow is provided by the example image. It is not available
@@ -62,6 +81,14 @@ To apply a firmware update package from the running system:
 ```sh
 iot2050-firmware-update /usr/share/iot2050/fwu/IOT2050-FW-Update-PKG-<Version>.tar.xz
 ```
+
+The command is a compatibility client for the root-only System Firmware
+service. The Firmware Center uses `/usr/sbin/iot2050-fwmgr`, durable tasks,
+and systemd workers instead. Managed requests always use the service-owned
+`${HOME}/.rollback_fw/rollback_backup_fw.tar` identity and require a valid
+signature. The legacy `--verify` option remains optional for the command-line
+client; `--backup-dir` is accepted only as an explicit compatibility override
+for a private root-owned directory.
 
 ## Selecting Boot Device (Temporary Override)
 In the U-Boot serial console, you can temporarily change the boot device:

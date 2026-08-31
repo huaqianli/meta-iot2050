@@ -65,6 +65,9 @@ Or use `kas-container build`:
 ```sh
 # Example image (includes demos, Node-RED, SM)
 ./kas-container build kas-iot2050-example.yml
+
+# Development compatibility mode (enables legacy root/iot2050 accounts)
+./kas-container build kas-iot2050-example.yml:kas/opt/dev.yml
 ```
 
 More composition patterns: [build-config §3](doc/build-config.md#3-manual-composition)
@@ -95,16 +98,17 @@ which is generally faster and safer:
 sudo bmaptool copy build/tmp/deploy/images/iot2050/iot2050-image-example-iot2050-debian-iot2050.wic /dev/mmcblk0
 ```
 
-The example image starts with the IP `192.168.200.1` preconfigured on the first
-Ethernet interface and uses DHCP on the other. You can use SSH to connect to
-the system.
+The example image starts with the IP `192.168.200.1/24` preconfigured on
+`eno1`, plus a cellular (4G) connection. You can use SSH to connect to the
+system.
 
 The BSP image does not configure the network. If you want to SSH into the
 system, you can use the root terminal via UART to configure the IP address
 using `ifconfig` and then connect via SSH.
 
-**NOTE**: The default username is `root`. You are required to change the
-default password upon first login.
+For development compatibility only, append `:kas/opt/dev.yml` to the build
+chain; see [build configuration](doc/build-config.md) for the profile
+differences.
 
 ### Installing the image on the eMMC (IOT2050 Advanced only)
 
